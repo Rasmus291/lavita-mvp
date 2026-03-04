@@ -35,6 +35,12 @@ def load_data(path):
 
 df = load_data(DATA_FILE)
 
+# Est. Bestellanzahl berechnen falls nicht vorhanden
+if df is not None and not df.empty:
+    if "est_orders" not in df.columns:
+        df["reviews"] = pd.to_numeric(df["reviews"], errors="coerce").fillna(0)
+        df["est_orders"] = (df["reviews"] * 20).astype(int)
+
 
 if df is None or df.empty:
     st.stop()
@@ -68,11 +74,13 @@ df_view = df_slice[df_slice['competition_grade'].isin(selected_grades)]
 st.title("💊 Lavita Wettbewerbs-Monitor")
 st.caption(f"📅 Stand: {pd.to_datetime(date_opt).strftime('%d.%m.%Y %H:%M')} | 📂 Produkte: {len(df_view)}")
 
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5, col6 = st.columns(6)
 col1.metric("Ø Preis", f"€{df_view['price_clean'].mean():.2f}", delta_color="off")
 col2.metric("Ø Rating", f"{df_view['rating'].mean():.1f} ★")
 col3.metric("Ø Reviews", f"{int(df_view['reviews'].mean())}")
 col4.metric("Ø Score (CIS)", f"{df_view['cis_score'].mean():.2f}", delta_color="normal")
+col5.metric("∑ Gesch. Bestellungen", f"{int(df_view['est_orders'].sum()):,}".replace(',','.'))
+col6.metric("Ø Amazon-Ranking", f"#{df_view['position'].mean():.1f}")
 
 # --- TAB STRUKTUR ---
 tab1, tab2, tab3 = st.tabs(["🏆 Produkt-Ranking", "📈 Trends", "🎯 Marktanalyse"])
@@ -81,20 +89,22 @@ tab1, tab2, tab3 = st.tabs(["🏆 Produkt-Ranking", "📈 Trends", "🎯 Marktan
 with tab1:
     st.subheader("Aktuelles Wettbewerbs-Ranking")
     
-    # Ranking berechnen
-    df_ranked = df_view.sort_values(by="cis_score", ascending=False).reset_index(drop=True)
+    # Ranking nach Amazon-Position (aufsteigend = Rang 1 zuerst)
+    df_ranked = df_view.sort_values(by="position", ascending=True).reset_index(drop=True)
     df_ranked.index = df_ranked.index + 1
     
     # Fix: Spalten korrekt referenzieren
-    display_cols = ["title", "brand", "price_clean", "rating", "reviews", "cis_score"]
+    display_cols = ["position", "title", "brand", "price_clean", "rating", "reviews", "est_orders", "cis_score"]
     
     st.dataframe(
         df_ranked[display_cols].rename(columns={
+            "position": "Amazon-Rang",
             "title": "Produkt",
             "brand": "Marke",
             "price_clean": "Preis (€)",
             "rating": "Bewertung",
             "reviews": "Rezensionen",
+            "est_orders": "Gesch. Bestellungen",
             "cis_score": "Score"
         }),
         use_container_width=True,

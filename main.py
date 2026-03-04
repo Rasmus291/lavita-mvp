@@ -69,6 +69,12 @@ class AmazonMarketAnalyzer:
             df["reviews"] = pd.to_numeric(df["reviews"], errors="coerce").fillna(0)
             df["rating"] = pd.to_numeric(df["rating"], errors="coerce")
             
+            # Geschätzte Bestellanzahl (Branchenstandard: Reviews × 20)
+            df["est_orders"] = (df["reviews"] * 20).astype(int)
+            
+            # Amazon-Ranking (Position) ist bereits vorhanden
+            # -> Spalte 'position' aus dem Scraping
+            
             # Wettbewerbs-Score (basierend auf Insights aus Marktbericht)
             # Da Natural Elements (Rank 1) führt, priorisieren wir Volume + Rating
             df = self._add_competition_score(df)
@@ -104,7 +110,9 @@ class AmazonMarketAnalyzer:
                 "avg_reviews": df["reviews"].mean(),
                 "total_products": len(df),
                 "grade_1_comp": len(df[df["competition_grade"] == 1]),  # Direkte Mitbewerber
-                "top_sellers_est": len(df[df["reviews"] >= 1000]) # Schätzung basierend auf Report (Ref: 1)
+                "top_sellers_est": len(df[df["reviews"] >= 1000]), # Schätzung basierend auf Report (Ref: 1)
+                "total_est_orders": df["est_orders"].sum(),  # Gesamte geschätzte Bestellungen
+                "avg_position": df["position"].mean(),  # Ø Amazon-Ranking
             }
             return pd.DataFrame([kpis])
 
