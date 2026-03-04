@@ -143,5 +143,5 @@ with tab3:
         - **Grad 1:** Direkte Konkurrenten (Format: Flüssig/Konzentrat)
         - **Grad 2:** Spezialisierte Immun-Komplexe
         - **Grad 3:** Standard-Multis
-        - **Grad 4/5:** Sonsitge NEM
+        - **Grad 4/5:** Sonsitge NE
         """)
