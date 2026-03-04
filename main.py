@@ -154,6 +154,43 @@ class AmazonMarketAnalyzer:
             print(f"Scraping Fehler für '{keyword}': {e}")
             return []
 
+    def scrape_bsr(self, asin: str) -> Optional[int]:
+        """
+        Holt den Bestseller-Rang (BSR) für ein einzelnes Produkt via SerpAPI Amazon Product API.
+        """
+        params = {
+            "engine": "amazon_product",
+            "amazon_domain": "amazon.de",
+            "asin": asin,
+            "api_key": self.api_key
+        }
+        try:
+            search = GoogleSearch(params)
+            results = search.get_dict()
+            
+            # BSR aus den Produktdetails extrahieren
+            bestsellers_rank = results.get("bestsellers_rank", [])
+            if bestsellers_rank and len(bestsellers_rank) > 0:
+                return bestsellers_rank[0].get("rank", None)
+            return None
+        except Exception as e:
+            print(f"BSR-Fehler für ASIN {asin}: {e}")
+            return None
+
+    def enrich_with_bsr(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Reichert DataFrame mit BSR-Daten an (nur für eindeutige ASINs).
+        """
+        unique_asins = df["asin"].dropna().unique()
+        bsr_map = {}
+        
+        for i, asin in enumerate(unique_asins):
+            print(f"   -> BSR abrufen: {asin} ({i+1}/{len(unique_asins)})")
+            bsr_map[asin] = self.scrape_bsr(asin)
+        
+        df["bsr"] = df["asin"].map(bsr_map)
+        return df
+
     def run_full_pipeline(self, save_interim: bool = True):
         """
         Führt den kompletten ETL-Prozess durch.
@@ -178,6 +215,10 @@ class AmazonMarketAnalyzer:
         # 3. Klassifikation
         self.filtered_data["competition_grade"] = \
             self.filtered_data["title"].apply(self.Classifier.classify)
+        
+        # 3b. BSR-Daten anreichern
+        print("📦 BSR-Daten abrufen...")
+        self.filtered_data = self.enrich_with_bsr(self.filtered_data)
         
         if save_interim:
             self.filtered_data.to_csv("data/filtered_classified.csv", index=False)

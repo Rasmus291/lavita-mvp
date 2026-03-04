@@ -40,6 +40,8 @@ if df is not None and not df.empty:
     if "est_orders" not in df.columns:
         df["reviews"] = pd.to_numeric(df["reviews"], errors="coerce").fillna(0)
         df["est_orders"] = (df["reviews"] * 20).astype(int)
+    if "bsr" not in df.columns:
+        df["bsr"] = None
 
 
 if df is None or df.empty:
@@ -70,6 +72,23 @@ selected_grades = st.sidebar.multiselect(
 
 df_view = df_slice[df_slice['competition_grade'].isin(selected_grades)]
 
+# Filter nach BSR (Bestseller-Rang)
+if "bsr" in df_view.columns and df_view["bsr"].notna().any():
+    bsr_min = int(df_view["bsr"].min())
+    bsr_max = int(df_view["bsr"].max())
+    bsr_range = st.sidebar.slider(
+        "🏆 Bestseller-Rang (BSR)",
+        min_value=bsr_min,
+        max_value=bsr_max,
+        value=(bsr_min, bsr_max),
+        help="Niedrigerer BSR = höhere Verkäufe"
+    )
+    df_view = df_view[
+        (df_view["bsr"] >= bsr_range[0]) & (df_view["bsr"] <= bsr_range[1])
+    ]
+else:
+    st.sidebar.info("🏆 BSR-Daten noch nicht verfügbar. Starte `python main.py` erneut, um BSR abzurufen.")
+
 # --- HEADER METRIKEN ---
 st.title("💊 Lavita Wettbewerbs-Monitor")
 st.caption(f"📅 Stand: {pd.to_datetime(date_opt).strftime('%d.%m.%Y %H:%M')} | 📂 Produkte: {len(df_view)}")
@@ -94,7 +113,7 @@ with tab1:
     df_ranked.index = df_ranked.index + 1
     
     # Fix: Spalten korrekt referenzieren
-    display_cols = ["position", "title", "brand", "price_clean", "rating", "reviews", "est_orders", "cis_score"]
+    display_cols = ["position", "title", "brand", "price_clean", "rating", "reviews", "est_orders", "bsr", "cis_score"]
     
     st.dataframe(
         df_ranked[display_cols].rename(columns={
@@ -105,6 +124,7 @@ with tab1:
             "rating": "Bewertung",
             "reviews": "Rezensionen",
             "est_orders": "Gesch. Bestellungen",
+            "bsr": "Bestseller-Rang",
             "cis_score": "Score"
         }),
         use_container_width=True,
