@@ -36,6 +36,11 @@ def load_data(path):
 
 df = load_data(DATA_FILE)
 
+# Nur vergangene/aktuelle Daten anzeigen (keine Zukunfts-Timestamps)
+if df is not None and not df.empty:
+    now = pd.Timestamp.now()
+    df = df[df["timestamp"] <= now].copy()
+
 # Est. Bestellanzahl & BSR berechnen/füllen (auch für alte Daten ohne diese Spalten)
 if df is not None and not df.empty:
     df["reviews"] = pd.to_numeric(df["reviews"], errors="coerce").fillna(0)
