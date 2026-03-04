@@ -283,9 +283,14 @@ class AmazonMarketAnalyzer:
     def _apply_filters(df: pd.DataFrame) -> pd.DataFrame:
         df = df.dropna(subset=["title"])
         
-        # Bedingung: Nur flüssig/saft
-        mask_liquid = df["title"].str.contains(
-            "flüssig|saft|konzentrat", case=False, na=False
+        # Bedingung: Flüssig/Saft/Konzentrat/Pulver (inkl. Trinkpulver, Elotrans etc.)
+        mask_format = df["title"].str.contains(
+            "flüssig|saft|konzentrat|pulver|trinkpulver", case=False, na=False
+        )
+        
+        # Ausschluss: Kapseln rausfiltern
+        mask_no_capsules = ~df["title"].str.contains(
+            "kapsel|kapseln|capsule|capsules", case=False, na=False
         )
         
         # Bedingung: Mindestreviews (>50 entspricht Low-Volume Threshold aus Report)
@@ -294,7 +299,7 @@ class AmazonMarketAnalyzer:
         # Bedingung: Preis vorhanden
         mask_price = df["price"].notnull()
         
-        return df[mask_liquid & mask_reviews & mask_price]
+        return df[mask_format & mask_no_capsules & mask_reviews & mask_price]
 
 
 # --- ANWENDUNG ---
