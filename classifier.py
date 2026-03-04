@@ -2,7 +2,7 @@ def classify_product(row):
     title = str(row["title"]).lower()
     
     # 1. FLÜSSIG MULTIVITAMIN (Direkte Wettbewerber - HIGH PRIORITY)
-    if "multivitamin" in title and "flüssig" in title:
+    if "multivitamine" in title and "flüssig" in title:
         return 1
     elif "multivitamin" in title and "konzentrat" in title: # NEU: Konzentrate erfassen
         return 1
