@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 import re
 import os
+import time
+import requests
 from datetime import datetime
 from typing import List, Optional
 from serpapi import GoogleSearch
@@ -113,6 +115,7 @@ class AmazonMarketAnalyzer:
                 "top_sellers_est": len(df[df["reviews"] >= 1000]), # Schätzung basierend auf Report (Ref: 1)
                 "total_est_orders": df["est_orders"].sum(),  # Gesamte geschätzte Bestellungen
                 "avg_position": df["position"].mean(),  # Ø Amazon-Ranking
+                "avg_bsr": df["bsr"].mean() if "bsr" in df.columns else None,  # Ø Bestseller-Rang
             }
             return pd.DataFrame([kpis])
 
@@ -154,24 +157,38 @@ class AmazonMarketAnalyzer:
             print(f"Scraping Fehler für '{keyword}': {e}")
             return []
 
+    # HTTP-Headers für direktes Amazon-Scraping
+    _HEADERS = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Accept-Language": "de-DE,de;q=0.9,en;q=0.8",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    }
+
     def scrape_bsr(self, asin: str) -> Optional[int]:
         """
-        Holt den Bestseller-Rang (BSR) für ein einzelnes Produkt via SerpAPI Amazon Product API.
+        Holt den Bestseller-Rang (BSR) direkt von der Amazon.de Produktseite.
+        Verbraucht keine SerpAPI-Credits.
         """
-        params = {
-            "engine": "amazon_product",
-            "amazon_domain": "amazon.de",
-            "asin": asin,
-            "api_key": self.api_key
-        }
+        url = f"https://www.amazon.de/dp/{asin}"
         try:
-            search = GoogleSearch(params)
-            results = search.get_dict()
-            
-            # BSR aus den Produktdetails extrahieren
-            bestsellers_rank = results.get("bestsellers_rank", [])
-            if bestsellers_rank and len(bestsellers_rank) > 0:
-                return bestsellers_rank[0].get("rank", None)
+            resp = requests.get(url, headers=self._HEADERS, timeout=15)
+            if resp.status_code != 200:
+                print(f"   BSR HTTP {resp.status_code} für {asin}")
+                return None
+
+            html = resp.text
+            patterns = [
+                r'Amazon[\s\-]*Bestseller[\s\-]*Rang.*?Nr\.?\s*([0-9.]+)\s+in\s',
+                r'<th[^>]*>\s*Amazon\s*Bestseller-Rang\s*</th>.*?Nr\.?\s*([0-9.]+)\s+in\s',
+            ]
+            for pattern in patterns:
+                match = re.search(pattern, html, re.IGNORECASE)
+                if match:
+                    rank_str = match.group(1).replace(".", "").replace(",", "")
+                    try:
+                        return int(rank_str)
+                    except ValueError:
+                        continue
             return None
         except Exception as e:
             print(f"BSR-Fehler für ASIN {asin}: {e}")
@@ -187,6 +204,7 @@ class AmazonMarketAnalyzer:
         for i, asin in enumerate(unique_asins):
             print(f"   -> BSR abrufen: {asin} ({i+1}/{len(unique_asins)})")
             bsr_map[asin] = self.scrape_bsr(asin)
+            time.sleep(1.5)  # Rate-Limit beachten
         
         df["bsr"] = df["asin"].map(bsr_map)
         return df

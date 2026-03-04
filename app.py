@@ -35,13 +35,17 @@ def load_data(path):
 
 df = load_data(DATA_FILE)
 
-# Est. Bestellanzahl berechnen falls nicht vorhanden
+# Est. Bestellanzahl & BSR berechnen/füllen (auch für alte Daten ohne diese Spalten)
 if df is not None and not df.empty:
+    df["reviews"] = pd.to_numeric(df["reviews"], errors="coerce").fillna(0)
     if "est_orders" not in df.columns:
-        df["reviews"] = pd.to_numeric(df["reviews"], errors="coerce").fillna(0)
         df["est_orders"] = (df["reviews"] * 20).astype(int)
+    else:
+        df["est_orders"] = df["est_orders"].fillna(df["reviews"] * 20).astype(int)
     if "bsr" not in df.columns:
         df["bsr"] = None
+    else:
+        df["bsr"] = pd.to_numeric(df["bsr"], errors="coerce")
 
 
 if df is None or df.empty:
@@ -93,13 +97,17 @@ else:
 st.title("💊 Lavita Wettbewerbs-Monitor")
 st.caption(f"📅 Stand: {pd.to_datetime(date_opt).strftime('%d.%m.%Y %H:%M')} | 📂 Produkte: {len(df_view)}")
 
-col1, col2, col3, col4, col5, col6 = st.columns(6)
+col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
 col1.metric("Ø Preis", f"€{df_view['price_clean'].mean():.2f}", delta_color="off")
 col2.metric("Ø Rating", f"{df_view['rating'].mean():.1f} ★")
 col3.metric("Ø Reviews", f"{int(df_view['reviews'].mean())}")
 col4.metric("Ø Score (CIS)", f"{df_view['cis_score'].mean():.2f}", delta_color="normal")
 col5.metric("∑ Gesch. Bestellungen", f"{int(df_view['est_orders'].sum()):,}".replace(',','.'))
 col6.metric("Ø Amazon-Ranking", f"#{df_view['position'].mean():.1f}")
+if df_view["bsr"].notna().any():
+    col7.metric("Ø Bestseller-Rang", f"#{int(df_view['bsr'].mean())}")
+else:
+    col7.metric("Ø Bestseller-Rang", "—")
 
 # --- TAB STRUKTUR ---
 tab1, tab2, tab3 = st.tabs(["🏆 Produkt-Ranking", "📈 Trends", "🎯 Marktanalyse"])
