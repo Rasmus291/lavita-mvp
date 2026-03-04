@@ -24,7 +24,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- DATEN LADEN ---
-@st.cache_data
+@st.cache_data(ttl=60)
 def load_data(path):
     if not os.path.exists(path):  # <-- KORREKT HIER
         st.error("Datei nicht gefunden!")
@@ -35,13 +35,17 @@ def load_data(path):
 
 df = load_data(DATA_FILE)
 
-# Est. Bestellanzahl berechnen falls nicht vorhanden
+# Est. Bestellanzahl & BSR berechnen/füllen (auch für alte Daten ohne diese Spalten)
 if df is not None and not df.empty:
+    df["reviews"] = pd.to_numeric(df["reviews"], errors="coerce").fillna(0)
     if "est_orders" not in df.columns:
-        df["reviews"] = pd.to_numeric(df["reviews"], errors="coerce").fillna(0)
         df["est_orders"] = (df["reviews"] * 20).astype(int)
+    else:
+        df["est_orders"] = df["est_orders"].fillna(df["reviews"] * 20).astype(int)
     if "bsr" not in df.columns:
         df["bsr"] = None
+    else:
+        df["bsr"] = pd.to_numeric(df["bsr"], errors="coerce")
 
 
 if df is None or df.empty:
