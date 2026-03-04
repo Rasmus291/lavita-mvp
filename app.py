@@ -49,6 +49,9 @@ if df is not None and not df.empty:
         df["bsr"] = pd.to_numeric(df["bsr"], errors="coerce")
     if "bsr_categories" not in df.columns:
         df["bsr_categories"] = None
+    # Brand bereinigen (HTML-Entities entfernen)
+    if "brand" in df.columns:
+        df["brand"] = df["brand"].astype(str).str.replace(r'&lrm;|&rlm;', '', regex=True).replace('nan', None)
 
 
 if df is None or df.empty:
@@ -119,8 +122,8 @@ tab1, tab2, tab3, tab4 = st.tabs(["🏆 Produkt-Ranking", "📈 Trends", "🎯 M
 with tab1:
     st.subheader("Aktuelles Wettbewerbs-Ranking")
     
-    # Ranking nach Amazon-Position (aufsteigend = Rang 1 zuerst)
-    df_ranked = df_view.sort_values(by="position", ascending=True).reset_index(drop=True)
+    # Sortierung nach Marke (Firma), dann Position
+    df_ranked = df_view.sort_values(by=["brand", "position"], ascending=[True, True]).reset_index(drop=True)
     df_ranked.index = df_ranked.index + 1
     
     # Fix: Spalten korrekt referenzieren
@@ -150,17 +153,19 @@ with tab1:
         
         df_ranked["bsr_hauptkategorie"] = df_ranked["bsr_categories"].apply(extract_main_category)
         df_ranked["bsr_subkategorie"] = df_ranked["bsr_categories"].apply(extract_sub_category)
-        display_cols = ["position", "title", "brand", "price_clean", "rating", "reviews", "est_orders", "bsr", "bsr_hauptkategorie", "bsr_subkategorie", "cis_score"]
+        display_cols = ["brand", "title", "price_clean", "rating", "reviews", "est_orders", "position", "bsr", "bsr_hauptkategorie", "bsr_subkategorie", "cis_score"]
+    else:
+        display_cols = ["brand", "title", "price_clean", "rating", "reviews", "est_orders", "position", "bsr", "cis_score"]
     
     st.dataframe(
         df_ranked[display_cols].rename(columns={
-            "position": "Amazon-Rang",
+            "brand": "Firma",
             "title": "Produkt",
-            "brand": "Marke",
             "price_clean": "Preis (€)",
             "rating": "Bewertung",
             "reviews": "Rezensionen",
             "est_orders": "Gesch. Bestellungen",
+            "position": "Amazon-Rang",
             "bsr": "BSR (Haupt)",
             "bsr_hauptkategorie": "BSR-Kategorie",
             "bsr_subkategorie": "BSR-Subkategorie",

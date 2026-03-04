@@ -175,56 +175,102 @@ class AmazonMarketAnalyzer:
             return list(bsr_data.values())[0]
         return None
 
-    def scrape_bsr_full(self, asin: str) -> dict:
-        """
-        Holt BSR + alle Kategorien direkt von der Amazon.de Produktseite.
-        Returns: dict {Kategorie: Rang}, z.B. {"Drogerie & Körperpflege": 183, "Multivitaminpräparate": 3}
-        """
+    def _fetch_amazon_page(self, asin: str) -> Optional[str]:
+        """Holt HTML-Inhalt einer Amazon.de Produktseite."""
         url = f"https://www.amazon.de/dp/{asin}"
         try:
             resp = requests.get(url, headers=self._HEADERS, timeout=15)
             if resp.status_code != 200:
-                print(f"   BSR HTTP {resp.status_code} für {asin}")
-                return {}
-
-            html = resp.text
-            pattern = r'Nr\.?\s*([0-9.]+)\s+in\s+(?:<a[^>]*>)?([^<]+?)(?:</a>)?(?:\s*\(|</span>)'
-            matches = re.findall(pattern, html)
-
-            results = {}
-            for rank_str, category in matches:
-                rank = int(rank_str.replace(".", "").replace(",", ""))
-                category = category.strip()
-                if category and rank > 0:
-                    results[category] = rank
-            return results
+                print(f"   HTTP {resp.status_code} für {asin}")
+                return None
+            return resp.text
         except Exception as e:
-            print(f"BSR-Fehler für ASIN {asin}: {e}")
+            print(f"   Fehler für ASIN {asin}: {e}")
+            return None
+
+    @staticmethod
+    def _extract_bsr_categories(html: str) -> dict:
+        """Extrahiert BSR + Kategorien aus Amazon-HTML."""
+        pattern = r'Nr\.?\s*([0-9.]+)\s+in\s+(?:<a[^>]*>)?([^<]+?)(?:</a>)?(?:\s*\(|</span>)'
+        matches = re.findall(pattern, html)
+        results = {}
+        for rank_str, category in matches:
+            rank = int(rank_str.replace(".", "").replace(",", ""))
+            category = category.strip()
+            if category and rank > 0:
+                results[category] = rank
+        return results
+
+    @staticmethod
+    def _extract_brand(html: str) -> Optional[str]:
+        """Extrahiert die Marke aus der Amazon-Produktseite."""
+        patterns = [
+            r'id="bylineInfo"[^>]*>[^<]*Besuche den ([^<-]+?)(?:-Store|Store)',
+            r'id="bylineInfo"[^>]*>([^<]+)',
+            r'Marke\s*</th>\s*<td[^>]*>\s*(?:<[^>]+>)*\s*([^<]+)',
+        ]
+        for pat in patterns:
+            m = re.search(pat, html, re.IGNORECASE)
+            if m:
+                brand = m.group(1).strip()
+                brand = re.sub(r'^Besuche den\s*', '', brand)
+                brand = re.sub(r'-?Store$', '', brand)
+                brand = re.sub(r'Marke:\s*', '', brand)
+                brand = re.sub(r'&lrm;|&rlm;|\u200e|\u200f', '', brand)
+                brand = brand.strip()
+                if brand and len(brand) > 1:
+                    return brand
+        return None
+
+    def scrape_bsr_full(self, asin: str) -> dict:
+        """
+        Holt BSR + alle Kategorien direkt von der Amazon.de Produktseite.
+        Returns: dict {Kategorie: Rang}
+        """
+        html = self._fetch_amazon_page(asin)
+        if not html:
             return {}
+        return self._extract_bsr_categories(html)
+
+    def scrape_product_details(self, asin: str) -> dict:
+        """
+        Holt BSR-Kategorien + Marke von einer Amazon.de Produktseite in einem Request.
+        Returns: {"bsr": int, "bsr_categories": str, "brand": str}
+        """
+        html = self._fetch_amazon_page(asin)
+        if not html:
+            return {"bsr": None, "bsr_categories": None, "brand": None}
+        
+        bsr_data = self._extract_bsr_categories(html)
+        brand = self._extract_brand(html)
+        
+        return {
+            "bsr": list(bsr_data.values())[0] if bsr_data else None,
+            "bsr_categories": str(bsr_data) if bsr_data else None,
+            "brand": brand,
+        }
 
     def enrich_with_bsr(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Reichert DataFrame mit BSR-Daten + Kategorien an (nur für eindeutige ASINs).
+        Reichert DataFrame mit BSR-Daten, Kategorien und Marke an (nur für eindeutige ASINs).
         """
         unique_asins = df["asin"].dropna().unique()
         bsr_map = {}
         bsr_categories_map = {}
+        brand_map = {}
         
         for i, asin in enumerate(unique_asins):
-            print(f"   -> BSR abrufen: {asin} ({i+1}/{len(unique_asins)})")
-            bsr_data = self.scrape_bsr_full(asin)
-            if bsr_data:
-                # Haupt-BSR = erster Eintrag (Oberkategorie)
-                bsr_map[asin] = list(bsr_data.values())[0]
-                # Alle Kategorien als JSON-String speichern
-                bsr_categories_map[asin] = str(bsr_data)
-            else:
-                bsr_map[asin] = None
-                bsr_categories_map[asin] = None
+            print(f"   -> Details abrufen: {asin} ({i+1}/{len(unique_asins)})")
+            details = self.scrape_product_details(asin)
+            bsr_map[asin] = details["bsr"]
+            bsr_categories_map[asin] = details["bsr_categories"]
+            brand_map[asin] = details["brand"]
             time.sleep(1.5)  # Rate-Limit beachten
         
         df["bsr"] = df["asin"].map(bsr_map)
         df["bsr_categories"] = df["asin"].map(bsr_categories_map)
+        # Brand nur füllen wenn aktuell leer
+        df["brand"] = df["brand"].fillna(df["asin"].map(brand_map))
         return df
 
     def run_full_pipeline(self, save_interim: bool = True):

@@ -1,5 +1,5 @@
 """
-Einmaliges Script: Bestehende master_data.csv mit BSR-Werten + Kategorien anreichern.
+Einmaliges Script: Bestehende master_data.csv mit BSR-Werten, Kategorien und Marke anreichern.
 Verbraucht KEINE SerpAPI-Credits – scrapt direkt von Amazon.de.
 """
 import pandas as pd
@@ -13,26 +13,52 @@ HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 
-def scrape_bsr_full(asin: str) -> dict:
-    """Scrapt BSR + alle Kategorien von Amazon.de"""
+def scrape_product_details(asin: str) -> dict:
+    """Scrapt BSR + Kategorien + Marke von Amazon.de in einem Request."""
     url = f"https://www.amazon.de/dp/{asin}"
     try:
         resp = requests.get(url, headers=HEADERS, timeout=15)
         if resp.status_code != 200:
-            return {}
+            return {"bsr": None, "bsr_categories": None, "brand": None}
         html = resp.text
+        
+        # BSR-Kategorien
         pattern = r'Nr\.?\s*([0-9.]+)\s+in\s+(?:<a[^>]*>)?([^<]+?)(?:</a>)?(?:\s*\(|</span>)'
         matches = re.findall(pattern, html)
-        results = {}
+        bsr_data = {}
         for rank_str, category in matches:
             rank = int(rank_str.replace(".", "").replace(",", ""))
             category = category.strip()
             if category and rank > 0:
-                results[category] = rank
-        return results
+                bsr_data[category] = rank
+        
+        # Marke extrahieren
+        brand = None
+        brand_patterns = [
+            r'id="bylineInfo"[^>]*>[^<]*Besuche den ([^<-]+?)(?:-Store|Store)',
+            r'id="bylineInfo"[^>]*>([^<]+)',
+            r'Marke\s*</th>\s*<td[^>]*>\s*(?:<[^>]+>)*\s*([^<]+)',
+        ]
+        for pat in brand_patterns:
+            m = re.search(pat, html, re.IGNORECASE)
+            if m:
+                brand = m.group(1).strip()
+                brand = re.sub(r'^Besuche den\s*', '', brand)
+                brand = re.sub(r'-?Store$', '', brand)
+                brand = re.sub(r'Marke:\s*', '', brand)
+                brand = brand.strip()
+                if brand and len(brand) > 1:
+                    break
+                brand = None
+        
+        return {
+            "bsr": list(bsr_data.values())[0] if bsr_data else None,
+            "bsr_categories": str(bsr_data) if bsr_data else None,
+            "brand": brand,
+        }
     except Exception as e:
         print(f"  Fehler für {asin}: {e}")
-        return {}
+        return {"bsr": None, "bsr_categories": None, "brand": None}
 
 
 if __name__ == "__main__":
@@ -40,29 +66,28 @@ if __name__ == "__main__":
     df = pd.read_csv(master_file)
     
     unique_asins = df["asin"].dropna().unique()
-    print(f"📦 BSR + Kategorien abrufen für {len(unique_asins)} eindeutige ASINs...")
+    print(f"📦 BSR + Kategorien + Marke abrufen für {len(unique_asins)} ASINs...")
     
     bsr_map = {}
     bsr_categories_map = {}
+    brand_map = {}
     
     for i, asin in enumerate(unique_asins):
         print(f"  [{i+1}/{len(unique_asins)}] {asin}", end=" ")
-        bsr_data = scrape_bsr_full(asin)
-        if bsr_data:
-            bsr_map[asin] = list(bsr_data.values())[0]
-            bsr_categories_map[asin] = str(bsr_data)
-            print(f"-> BSR: {bsr_map[asin]} | Kategorien: {list(bsr_data.keys())}")
-        else:
-            bsr_map[asin] = None
-            bsr_categories_map[asin] = None
-            print("-> None")
+        details = scrape_product_details(asin)
+        bsr_map[asin] = details["bsr"]
+        bsr_categories_map[asin] = details["bsr_categories"]
+        brand_map[asin] = details["brand"]
+        print(f"-> BSR: {details['bsr']} | Brand: {details['brand']}")
         time.sleep(1.5)
     
     df["bsr"] = df["asin"].map(bsr_map)
     df["bsr_categories"] = df["asin"].map(bsr_categories_map)
+    df["brand"] = df["asin"].map(brand_map)
     
-    filled = df["bsr"].notna().sum()
-    print(f"\n✅ {filled}/{len(df)} Zeilen mit BSR gefüllt.")
+    filled_bsr = df["bsr"].notna().sum()
+    filled_brand = df["brand"].notna().sum()
+    print(f"\n✅ {filled_bsr}/{len(df)} BSR, {filled_brand}/{len(df)} Marken gefüllt.")
     
     df.to_csv(master_file, index=False)
     print(f"💾 {master_file} gespeichert.")
@@ -72,6 +97,7 @@ if __name__ == "__main__":
         df_filtered = pd.read_csv(filtered_file)
         df_filtered["bsr"] = df_filtered["asin"].map(bsr_map)
         df_filtered["bsr_categories"] = df_filtered["asin"].map(bsr_categories_map)
+        df_filtered["brand"] = df_filtered["asin"].map(brand_map)
         df_filtered.to_csv(filtered_file, index=False)
         print(f"💾 {filtered_file} gespeichert.")
     except Exception:
