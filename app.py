@@ -24,7 +24,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- DATEN LADEN ---
-@st.cache_data
+@st.cache_data(ttl=60)
 def load_data(path):
     if not os.path.exists(path):  # <-- KORREKT HIER
         st.error("Datei nicht gefunden!")
