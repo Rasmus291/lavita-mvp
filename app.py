@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import os
+import ast
 
 # Fix: Globale Variablen vordefinieren
 DATA_FILE = "data/master_data.csv"
@@ -46,6 +47,8 @@ if df is not None and not df.empty:
         df["bsr"] = None
     else:
         df["bsr"] = pd.to_numeric(df["bsr"], errors="coerce")
+    if "bsr_categories" not in df.columns:
+        df["bsr_categories"] = None
 
 
 if df is None or df.empty:
@@ -99,7 +102,7 @@ st.caption(f"📅 Stand: {pd.to_datetime(date_opt).strftime('%d.%m.%Y %H:%M')} |
 
 
 # --- TAB STRUKTUR ---
-tab1, tab2, tab3 = st.tabs(["🏆 Produkt-Ranking", "📈 Trends", "🎯 Marktanalyse"])
+tab1, tab2, tab3, tab4 = st.tabs(["🏆 Produkt-Ranking", "📈 Trends", "🎯 Marktanalyse", "🏅 BSR-Kategorien"])
 
 # === TAB 1: PRODUKT RANKING ===
 with tab1:
@@ -112,6 +115,32 @@ with tab1:
     # Fix: Spalten korrekt referenzieren
     display_cols = ["position", "title", "brand", "price_clean", "rating", "reviews", "est_orders", "bsr", "cis_score"]
     
+    # BSR-Kategorie-Spalte hinzufügen (Hauptkategorie extrahieren)
+    if "bsr_categories" in df_ranked.columns and df_ranked["bsr_categories"].notna().any():
+        def extract_main_category(cat_str):
+            try:
+                d = ast.literal_eval(str(cat_str))
+                if isinstance(d, dict) and d:
+                    return list(d.keys())[0]
+            except (ValueError, SyntaxError):
+                pass
+            return None
+        
+        def extract_sub_category(cat_str):
+            try:
+                d = ast.literal_eval(str(cat_str))
+                if isinstance(d, dict) and len(d) > 1:
+                    keys = list(d.keys())
+                    vals = list(d.values())
+                    return f"Nr. {vals[1]} in {keys[1]}"
+            except (ValueError, SyntaxError):
+                pass
+            return None
+        
+        df_ranked["bsr_hauptkategorie"] = df_ranked["bsr_categories"].apply(extract_main_category)
+        df_ranked["bsr_subkategorie"] = df_ranked["bsr_categories"].apply(extract_sub_category)
+        display_cols = ["position", "title", "brand", "price_clean", "rating", "reviews", "est_orders", "bsr", "bsr_hauptkategorie", "bsr_subkategorie", "cis_score"]
+    
     st.dataframe(
         df_ranked[display_cols].rename(columns={
             "position": "Amazon-Rang",
@@ -121,7 +150,9 @@ with tab1:
             "rating": "Bewertung",
             "reviews": "Rezensionen",
             "est_orders": "Gesch. Bestellungen",
-            "bsr": "Bestseller-Rang",
+            "bsr": "BSR (Haupt)",
+            "bsr_hauptkategorie": "BSR-Kategorie",
+            "bsr_subkategorie": "BSR-Subkategorie",
             "cis_score": "Score"
         }),
         use_container_width=True,
@@ -172,3 +203,68 @@ with tab3:
         - **Grad 3:** Standard-Multis
         - **Grad 4/5:** Sonsitge NE
         """)
+
+# === TAB 4: BSR-KATEGORIEN ===
+with tab4:
+    st.subheader("🏅 BSR-Rankings nach Amazon-Kategorie")
+    
+    if "bsr_categories" in df_view.columns and df_view["bsr_categories"].notna().any():
+        # Alle Kategorien aus den Daten extrahieren
+        all_categories = []
+        for _, row in df_view.iterrows():
+            try:
+                d = ast.literal_eval(str(row["bsr_categories"]))
+                if isinstance(d, dict):
+                    for cat, rank in d.items():
+                        all_categories.append({
+                            "Produkt": row.get("title", "")[:80],
+                            "Marke": row.get("brand", ""),
+                            "Kategorie": cat,
+                            "BSR-Rang": rank,
+                            "ASIN": row.get("asin", "")
+                        })
+            except (ValueError, SyntaxError):
+                continue
+        
+        if all_categories:
+            df_cats = pd.DataFrame(all_categories)
+            
+            # Übersicht: Welche Kategorien gibt es?
+            unique_cats = sorted(df_cats["Kategorie"].unique())
+            st.info(f"**{len(unique_cats)} Amazon-Kategorien** gefunden: {', '.join(unique_cats)}")
+            
+            # Filter nach Kategorie
+            selected_cat = st.selectbox("📂 Kategorie wählen", options=["Alle"] + unique_cats)
+            
+            if selected_cat != "Alle":
+                df_cats = df_cats[df_cats["Kategorie"] == selected_cat]
+            
+            # Sortiert nach BSR-Rang (aufsteigend = bester Rang zuerst)
+            df_cats = df_cats.sort_values("BSR-Rang", ascending=True).reset_index(drop=True)
+            df_cats.index = df_cats.index + 1
+            
+            st.dataframe(df_cats, use_container_width=True, height=500)
+            
+            # Visualisierung: BSR pro Kategorie
+            st.subheader("📊 BSR-Verteilung pro Kategorie")
+            cat_summary = df_cats.groupby("Kategorie").agg(
+                Anzahl_Produkte=("BSR-Rang", "count"),
+                Bester_BSR=("BSR-Rang", "min"),
+                Durchschnitt_BSR=("BSR-Rang", "mean"),
+                Schlechtester_BSR=("BSR-Rang", "max")
+            ).reset_index().sort_values("Bester_BSR")
+            
+            st.dataframe(cat_summary, use_container_width=True)
+            
+            fig_bsr = px.bar(
+                cat_summary, 
+                x="Kategorie", 
+                y="Durchschnitt_BSR",
+                title="Ø BSR-Rang pro Kategorie (niedriger = besser)",
+                color="Anzahl_Produkte",
+                text="Bester_BSR"
+            )
+            fig_bsr.update_layout(yaxis_title="BSR-Rang", xaxis_tickangle=-45)
+            st.plotly_chart(fig_bsr, use_container_width=True)
+    else:
+        st.info("🏅 BSR-Kategorie-Daten noch nicht verfügbar. Starte `python main.py` erneut.")

@@ -169,44 +169,62 @@ class AmazonMarketAnalyzer:
         Holt den Bestseller-Rang (BSR) direkt von der Amazon.de Produktseite.
         Verbraucht keine SerpAPI-Credits.
         """
+        bsr_data = self.scrape_bsr_full(asin)
+        if bsr_data:
+            # Erster Eintrag = Haupt-Kategorie (niedrigste Ebene)
+            return list(bsr_data.values())[0]
+        return None
+
+    def scrape_bsr_full(self, asin: str) -> dict:
+        """
+        Holt BSR + alle Kategorien direkt von der Amazon.de Produktseite.
+        Returns: dict {Kategorie: Rang}, z.B. {"Drogerie & Körperpflege": 183, "Multivitaminpräparate": 3}
+        """
         url = f"https://www.amazon.de/dp/{asin}"
         try:
             resp = requests.get(url, headers=self._HEADERS, timeout=15)
             if resp.status_code != 200:
                 print(f"   BSR HTTP {resp.status_code} für {asin}")
-                return None
+                return {}
 
             html = resp.text
-            patterns = [
-                r'Amazon[\s\-]*Bestseller[\s\-]*Rang.*?Nr\.?\s*([0-9.]+)\s+in\s',
-                r'<th[^>]*>\s*Amazon\s*Bestseller-Rang\s*</th>.*?Nr\.?\s*([0-9.]+)\s+in\s',
-            ]
-            for pattern in patterns:
-                match = re.search(pattern, html, re.IGNORECASE)
-                if match:
-                    rank_str = match.group(1).replace(".", "").replace(",", "")
-                    try:
-                        return int(rank_str)
-                    except ValueError:
-                        continue
-            return None
+            pattern = r'Nr\.?\s*([0-9.]+)\s+in\s+(?:<a[^>]*>)?([^<]+?)(?:</a>)?(?:\s*\(|</span>)'
+            matches = re.findall(pattern, html)
+
+            results = {}
+            for rank_str, category in matches:
+                rank = int(rank_str.replace(".", "").replace(",", ""))
+                category = category.strip()
+                if category and rank > 0:
+                    results[category] = rank
+            return results
         except Exception as e:
             print(f"BSR-Fehler für ASIN {asin}: {e}")
-            return None
+            return {}
 
     def enrich_with_bsr(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Reichert DataFrame mit BSR-Daten an (nur für eindeutige ASINs).
+        Reichert DataFrame mit BSR-Daten + Kategorien an (nur für eindeutige ASINs).
         """
         unique_asins = df["asin"].dropna().unique()
         bsr_map = {}
+        bsr_categories_map = {}
         
         for i, asin in enumerate(unique_asins):
             print(f"   -> BSR abrufen: {asin} ({i+1}/{len(unique_asins)})")
-            bsr_map[asin] = self.scrape_bsr(asin)
+            bsr_data = self.scrape_bsr_full(asin)
+            if bsr_data:
+                # Haupt-BSR = erster Eintrag (Oberkategorie)
+                bsr_map[asin] = list(bsr_data.values())[0]
+                # Alle Kategorien als JSON-String speichern
+                bsr_categories_map[asin] = str(bsr_data)
+            else:
+                bsr_map[asin] = None
+                bsr_categories_map[asin] = None
             time.sleep(1.5)  # Rate-Limit beachten
         
         df["bsr"] = df["asin"].map(bsr_map)
+        df["bsr_categories"] = df["asin"].map(bsr_categories_map)
         return df
 
     def run_full_pipeline(self, save_interim: bool = True):
