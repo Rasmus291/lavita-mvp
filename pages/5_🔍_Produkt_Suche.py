@@ -206,10 +206,10 @@ if st.session_state.search_results is not None and not st.session_state.pipeline
     has_prev = df["already_tracked"].any()
 
     if has_prev:
-        header_cols = st.columns([0.4, 0.7, 0.5, 3.5, 1.2, 1, 0.8, 1, 0.8, 1, 0.8])
+        header_cols = st.columns([0.4, 0.9, 0.5, 3.3, 1.2, 1, 0.8, 1, 0.8, 1, 0.8])
         headers = ["", "Status", "Rang", "Produkt", "Marke", "Preis", "Δ", "Reviews", "Δ", "Rating", "Δ"]
     else:
-        header_cols = st.columns([0.4, 0.7, 0.5, 4, 1.5, 1, 1, 1])
+        header_cols = st.columns([0.4, 0.9, 0.5, 3.8, 1.5, 1, 1, 1])
         headers = ["", "Status", "Rang", "Produkt", "Marke", "Preis", "Reviews", "Rating"]
 
     for col, h in zip(header_cols, headers):
@@ -223,9 +223,9 @@ if st.session_state.search_results is not None and not st.session_state.pipeline
         default = st.session_state.selections.get(idx, True)
 
         if has_prev:
-            cols = st.columns([0.4, 0.7, 0.5, 3.5, 1.2, 1, 0.8, 1, 0.8, 1, 0.8])
+            cols = st.columns([0.4, 0.9, 0.5, 3.3, 1.2, 1, 0.8, 1, 0.8, 1, 0.8])
         else:
-            cols = st.columns([0.4, 0.7, 0.5, 4, 1.5, 1, 1, 1])
+            cols = st.columns([0.4, 0.9, 0.5, 3.8, 1.5, 1, 1, 1])
 
         # Checkbox
         with cols[0]:
@@ -237,6 +237,14 @@ if st.session_state.search_results is not None and not st.session_state.pipeline
         with cols[1]:
             if row["already_tracked"]:
                 st.markdown("📊 Update")
+                if pd.notna(row.get("prev_timestamp")):
+                    hours_ago = (pd.Timestamp.now() - pd.to_datetime(row["prev_timestamp"])).total_seconds() / 3600
+                    if hours_ago < 1:
+                        st.caption(f"vor {int(hours_ago * 60)}min")
+                    elif hours_ago < 24:
+                        st.caption(f"vor {int(hours_ago)}h")
+                    else:
+                        st.caption(f"vor {int(hours_ago / 24)}d")
             else:
                 st.markdown("🆕 Neu")
 
