@@ -1,10 +1,10 @@
 """
-Manuelle Produktsuche: Keyword eingeben → Amazon scrapen → Produkte zum Tracking hinzufügen.
+Manuelle Produktsuche: Keywords eingeben → Amazon scrapen → Produkte zum Tracking hinzufügen.
 """
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from config import SERPAPI_KEY
+from config import SERPAPI_KEY, KEYWORDS as CONFIG_KEYWORDS
 from scraper import scrape_keyword
 from product_registry import get_registry
 from pipeline import run_manual_pipeline
@@ -29,30 +29,69 @@ if "pipeline_result" not in st.session_state:
 
 # --- Suchbereich ---
 st.subheader("1️⃣ Amazon-Suche")
-col_input, col_count = st.columns([3, 1])
 
-with col_input:
-    keyword = st.text_input(
-        "Suchbegriff eingeben",
-        placeholder="z.B. Vitamin D Tropfen, Magnesium Flüssig...",
-        key="keyword_input",
-    )
+# Keyword-Auswahl: vordefinierte Keywords als Multiselect
+selected_keywords = st.multiselect(
+    "Vordefinierte Keywords auswählen",
+    options=CONFIG_KEYWORDS,
+    default=[],
+    help="Wähle ein oder mehrere Keywords aus der Liste.",
+)
 
+# Zusätzliche eigene Keywords (komma-separiert)
+custom_input = st.text_input(
+    "Eigene Keywords eingeben (komma-separiert)",
+    placeholder="z.B. Vitamin D Tropfen, Magnesium Flüssig, Zink Konzentrat",
+    key="keyword_input",
+)
+
+col_count, col_spacer = st.columns([1, 3])
 with col_count:
-    max_results = st.number_input("Max. Ergebnisse", min_value=5, max_value=50, value=20, step=5)
+    max_results = st.number_input("Max. Ergebnisse pro Keyword", min_value=5, max_value=50, value=20, step=5)
+
+# Alle Keywords zusammenführen
+all_keywords = list(selected_keywords)
+if custom_input.strip():
+    custom_keywords = [k.strip() for k in custom_input.split(",") if k.strip()]
+    all_keywords.extend(custom_keywords)
+# Duplikate entfernen, Reihenfolge beibehalten
+seen = set()
+unique_keywords = []
+for kw in all_keywords:
+    if kw.lower() not in seen:
+        seen.add(kw.lower())
+        unique_keywords.append(kw)
+
+if unique_keywords:
+    st.info(f"**{len(unique_keywords)} Keyword(s):** {', '.join(unique_keywords)}")
 
 search_clicked = st.button("🔎 Suchen", type="primary", use_container_width=True)
 
-if search_clicked and keyword.strip():
+if search_clicked and unique_keywords:
     st.session_state.pipeline_done = False
     st.session_state.pipeline_result = None
     st.session_state.pop("selections", None)
 
-    with st.spinner(f"Suche nach \"{keyword}\" auf Amazon.de..."):
-        results = scrape_keyword(SERPAPI_KEY, keyword.strip(), max_results=max_results)
+    all_results = []
+    progress_bar = st.progress(0, text="Starte Suche…")
 
-    if results:
-        df = pd.DataFrame(results)
+    for i, kw in enumerate(unique_keywords):
+        progress_bar.progress(
+            (i) / len(unique_keywords),
+            text=f"Suche nach \"{kw}\" ({i + 1}/{len(unique_keywords)})…"
+        )
+        results = scrape_keyword(SERPAPI_KEY, kw.strip(), max_results=max_results)
+        if results:
+            for r in results:
+                r["search_keyword"] = kw
+            all_results.extend(results)
+
+    progress_bar.progress(1.0, text="Suche abgeschlossen!")
+
+    if all_results:
+        df = pd.DataFrame(all_results)
+        # Duplikate über ASIN entfernen (erstes Keyword behält Priorität)
+        df = df.drop_duplicates(subset=["asin"], keep="first")
         total_scraped = len(df)
 
         # LaVita-Relevanzfilter: nur flüssige Supplements, keine Kapseln/Tabletten/Fruchtsäfte etc.
@@ -99,15 +138,16 @@ if search_clicked and keyword.strip():
                 lambda r: int(r["reviews_num"] - r["prev_reviews"]) if pd.notna(r.get("prev_reviews")) else None, axis=1
             )
 
+            kw_label = ", ".join(unique_keywords)
             st.session_state.search_results = df
-            st.session_state.search_keyword = keyword.strip()
-            st.success(f"✅ {len(df)} LaVita-relevante Produkte gefunden für \"{keyword}\"")
+            st.session_state.search_keyword = kw_label
+            st.success(f"✅ {len(df)} LaVita-relevante Produkte für {len(unique_keywords)} Keyword(s) gefunden")
     else:
         st.session_state.search_results = None
         st.warning("Keine Ergebnisse gefunden. Versuche einen anderen Suchbegriff.")
 
-elif search_clicked and not keyword.strip():
-    st.warning("Bitte einen Suchbegriff eingeben.")
+elif search_clicked and not unique_keywords:
+    st.warning("Bitte mindestens ein Keyword auswählen oder eingeben.")
 
 
 def _format_delta(val, invert=False, fmt="d"):
