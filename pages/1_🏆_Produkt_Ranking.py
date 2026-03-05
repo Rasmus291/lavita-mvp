@@ -84,11 +84,19 @@ if len(timestamps_sorted) >= 2:
         compare_label = pd.to_datetime(compare_ts).strftime("%d.%m.%Y %H:%M")
         st.caption(f"📊 Veränderung im Vergleich zu: **{compare_label}**")
 
-# Neu-Kennzeichnung
-if "is_new" in df_ranked.columns:
-    df_ranked["status"] = df_ranked["is_new"].apply(lambda x: "🆕 Neu" if x else "")
-else:
-    df_ranked["status"] = ""
+# Status-Spalte: Neu-Kennzeichnung oder letztes Update
+def _build_status(row):
+    if "is_new" in row.index and row.get("is_new"):
+        return "🆕 Neu"
+    if "last_updated" in row.index and pd.notna(row.get("last_updated")):
+        try:
+            ts = pd.to_datetime(row["last_updated"])
+            return f"🔄 {ts.strftime('%d.%m.%Y %H:%M')}"
+        except Exception:
+            return ""
+    return ""
+
+df_ranked["status"] = df_ranked.apply(_build_status, axis=1)
 
 # product_id sicherstellen
 if "product_id" not in df_ranked.columns:
