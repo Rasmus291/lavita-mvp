@@ -38,7 +38,7 @@ def load_raw_data(path=DATA_FILE):
     if not os.path.exists(path):
         return None
     df = pd.read_csv(path)
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df['timestamp'] = pd.to_datetime(df['timestamp'], format='mixed')
     return df
 
 
@@ -96,7 +96,7 @@ def get_latest_values(asins: list) -> pd.DataFrame:
     if df.empty or "asin" not in df.columns:
         return pd.DataFrame(columns=["asin"])
 
-    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df["timestamp"] = pd.to_datetime(df["timestamp"], format='mixed')
     df = df[df["asin"].isin(asins)]
 
     if df.empty:
@@ -168,7 +168,7 @@ def get_latest_values(asins: list) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
 
-    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df["timestamp"] = pd.to_datetime(df["timestamp"], format='mixed')
     df = df.sort_values("timestamp", ascending=False)
 
     # Letzten Eintrag pro ASIN
