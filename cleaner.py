@@ -19,20 +19,11 @@ def clean_price(price) -> float | None:
 
 def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Filtert Produkte nach Format (flüssig/pulver), schließt Kapseln aus,
-    und wendet Mindest-Reviews + Preis-Checks an.
+    Filtert Produkte: Basis-Qualitätsfilter (Reviews, Preis).
+    Format-Filterung entfällt – die Klassifikation (classifier.py) übernimmt
+    die Einordnung in die 5 Ähnlichkeits-Kategorien.
     """
     df = df.dropna(subset=["title"])
-
-    # Format: Flüssig/Saft/Konzentrat/Pulver
-    mask_format = df["title"].str.contains(
-        "flüssig|saft|konzentrat|pulver|trinkpulver", case=False, na=False
-    )
-
-    # Ausschluss: Kapseln
-    mask_no_capsules = ~df["title"].str.contains(
-        "kapsel|kapseln|capsule|capsules", case=False, na=False
-    )
 
     # Mindestreviews (>50)
     mask_reviews = df["reviews"].fillna(0) > 50
@@ -40,4 +31,4 @@ def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
     # Preis vorhanden
     mask_price = df["price"].notnull()
 
-    return df[mask_format & mask_no_capsules & mask_reviews & mask_price]
+    return df[mask_reviews & mask_price]

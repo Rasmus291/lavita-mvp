@@ -14,25 +14,28 @@ if df is None or df.empty:
 df_view, date_opt = render_sidebar_filters(df)
 df_view = df_view.sort_values('position').drop_duplicates(subset=['asin'], keep='first')
 
-st.header("🎯 Verteilung nach Wettbewerbs-Grad")
+st.header("🎯 Produkt-Ähnlichkeit (5 Kategorien)")
 
 pie = df_view["competition_grade"].value_counts().sort_index().reset_index()
-pie.columns = ["Grad", "Anzahl"]
-pie["Label"] = pie["Grad"].map(GRADE_LABELS)
+pie.columns = ["Kategorie", "Anzahl"]
+pie["Label"] = pie["Kategorie"].map(GRADE_LABELS)
 
 col_a, col_b = st.columns(2)
 
 with col_a:
     st.plotly_chart(
-        px.pie(pie, names="Label", values="Anzahl", hole=0.4),
+        px.pie(pie, names="Label", values="Anzahl", hole=0.4,
+               color_discrete_sequence=px.colors.sequential.Tealgrn_r),
         use_container_width=True,
     )
 
 with col_b:
-    st.write("### Legende")
+    st.write("### Kategorien (1 = nah an LaVita, 5 = fern)")
     st.info("""
-    - **Grad 1:** Direkte Konkurrenten (Format: Flüssig/Konzentrat)
-    - **Grad 2:** Spezialisierte Immun-Komplexe
-    - **Grad 3:** Standard-Multis
-    - **Grad 4/5:** Sonstige NE
+    - **Kat 1:** Flüssiges Multivitaminkonzentrat + Mikronährstoffe
+    - **Kat 2:** Multivitamin-Pulver zum Trinken + Mikronährstoffe
+    - **Kat 3:** Multivitamin-Kapseln/-Tabletten + Mikronährstoffe
+    - **Kat 4:** Allgemeines NEM-Pulver/Drink (kein Multi)
+    - **Kat 5:** Sonstige NEM, Vitamine, Lifestyle-Health
     """)
+    st.caption("Klassifikation via Buzzword-Analyse + Amazon Browse-Nodes")
