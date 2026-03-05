@@ -28,8 +28,11 @@ st.header("🏆 Aktuelles Wettbewerbs-Ranking")
 if selected_keyword != "Alle Keywords":
     st.caption(f"🔑 Keyword: **{selected_keyword}** | Produkte: {len(df_view)}")
 
-# Sortierung nach Position (Rang)
-df_ranked = df_view.sort_values(by=["position"], ascending=[True]).reset_index(drop=True)
+# Bei "Alle Keywords": Deduplizierung (bester Rang pro Produkt), bei Einzelkeyword: alle zeigen
+if selected_keyword == "Alle Keywords":
+    df_ranked = df_view.sort_values("position").drop_duplicates(subset=["asin"], keep="first").reset_index(drop=True)
+else:
+    df_ranked = df_view.sort_values("position").reset_index(drop=True)
 df_ranked.index = df_ranked.index + 1
 
 # --- Vergleichszeitpunkt wählen ---

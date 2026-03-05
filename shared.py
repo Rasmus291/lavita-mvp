@@ -93,7 +93,7 @@ def render_sidebar_filters(df):
     date_opt = st.sidebar.selectbox("Scan-Datum", options=date_options, index=0)
 
     df_slice = df[df['timestamp'] == date_opt]
-    df_slice = df_slice.sort_values('position').drop_duplicates(subset=['asin'], keep='first')
+    df_slice = df_slice.sort_values('position')
 
     df_view = df_slice.copy()
 

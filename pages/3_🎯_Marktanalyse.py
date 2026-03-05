@@ -12,6 +12,7 @@ if df is None or df.empty:
     st.stop()
 
 df_view, date_opt = render_sidebar_filters(df)
+df_view = df_view.sort_values('position').drop_duplicates(subset=['asin'], keep='first')
 
 st.header("🎯 Verteilung nach Wettbewerbs-Grad")
 
