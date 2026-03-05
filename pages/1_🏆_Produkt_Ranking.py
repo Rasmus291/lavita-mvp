@@ -20,23 +20,56 @@ st.header("🏆 Aktuelles Wettbewerbs-Ranking")
 df_ranked = df_view.sort_values(by=["brand", "position"], ascending=[True, True]).reset_index(drop=True)
 df_ranked.index = df_ranked.index + 1
 
-# --- Produkt-Trends berechnen (Delta zum vorherigen Scan) ---
+# --- Vergleichszeitpunkt wählen ---
 timestamps_sorted = sorted(df["timestamp"].unique())
 has_trends = False
+
 if len(timestamps_sorted) >= 2:
-    prev_ts = timestamps_sorted[-2]
-    df_prev = df[df["timestamp"] == prev_ts].copy()
-    df_prev = df_prev.sort_values("position").drop_duplicates(subset=["asin"], keep="first")
+    # Aktuelle Zeitstempel ausschließen
+    compare_options = [ts for ts in timestamps_sorted if ts != date_opt]
 
-    prev_lookup = df_prev.set_index("asin")[["position", "bsr", "reviews"]].rename(
-        columns={"position": "prev_position", "bsr": "prev_bsr", "reviews": "prev_reviews"}
-    )
-    df_ranked = df_ranked.join(prev_lookup, on="asin")
+    if compare_options:
+        st.sidebar.markdown("---")
+        st.sidebar.header("📊 Veränderungs-Vergleich")
 
-    df_ranked["Rang Δ"] = df_ranked["position"] - df_ranked["prev_position"]
-    df_ranked["BSR Δ"] = df_ranked["bsr"] - df_ranked["prev_bsr"]
-    df_ranked["Reviews Δ"] = df_ranked["reviews"] - df_ranked["prev_reviews"]
-    has_trends = True
+        compare_mode = st.sidebar.radio(
+            "Vergleichen mit",
+            options=["Letzter Scan", "Bestimmtes Datum"],
+            index=0,
+        )
+
+        if compare_mode == "Letzter Scan":
+            # Nächstälterer Zeitpunkt vor dem aktuellen
+            older = [ts for ts in compare_options if ts < date_opt]
+            compare_ts = older[-1] if older else compare_options[-1]
+        else:
+            compare_ts = st.sidebar.selectbox(
+                "Vergleichsdatum",
+                options=sorted(compare_options, reverse=True),
+                format_func=lambda x: pd.to_datetime(x).strftime("%d.%m.%Y %H:%M"),
+            )
+
+        df_prev = df[df["timestamp"] == compare_ts].copy()
+        df_prev = df_prev.sort_values("position").drop_duplicates(subset=["asin"], keep="first")
+
+        prev_lookup = df_prev.set_index("asin")[["position", "bsr", "reviews", "rating"]].rename(
+            columns={
+                "position": "prev_position",
+                "bsr": "prev_bsr",
+                "reviews": "prev_reviews",
+                "rating": "prev_rating",
+            }
+        )
+        df_ranked = df_ranked.join(prev_lookup, on="asin")
+
+        df_ranked["Rang Δ"] = df_ranked["position"] - df_ranked["prev_position"]
+        df_ranked["BSR Δ"] = df_ranked["bsr"] - df_ranked["prev_bsr"]
+        df_ranked["Reviews Δ"] = df_ranked["reviews"] - df_ranked["prev_reviews"]
+        df_ranked["Rating Δ"] = (df_ranked["rating"] - df_ranked["prev_rating"]).round(1)
+        has_trends = True
+
+        compare_label = pd.to_datetime(compare_ts).strftime("%d.%m.%Y %H:%M")
+        st.caption(f"📊 Veränderung im Vergleich zu: **{compare_label}**")
 
 # Neu-Kennzeichnung
 if "is_new" in df_ranked.columns:
@@ -54,7 +87,7 @@ display_cols = ["product_id", "status", "position", "title", "brand", "price_cle
 if has_trends:
     display_cols = [
         "product_id", "status", "position", "Rang Δ", "title", "brand", "price_clean",
-        "rating", "reviews", "Reviews Δ", "est_orders", "bsr", "BSR Δ", "cis_score"
+        "rating", "Rating Δ", "reviews", "Reviews Δ", "est_orders", "bsr", "BSR Δ", "cis_score"
     ]
 
 # BSR-Kategorie-Spalte hinzufügen
@@ -81,10 +114,18 @@ if "bsr_categories" in df_ranked.columns and df_ranked["bsr_categories"].notna()
 
     df_ranked["bsr_hauptkategorie"] = df_ranked["bsr_categories"].apply(extract_main_category)
     df_ranked["bsr_subkategorie"] = df_ranked["bsr_categories"].apply(extract_sub_category)
-    display_cols = [
-        "product_id", "status", "position", "title", "brand", "price_clean", "rating", "reviews",
-        "est_orders", "bsr", "bsr_hauptkategorie", "bsr_subkategorie", "cis_score"
-    ]
+
+    if has_trends:
+        display_cols = [
+            "product_id", "status", "position", "Rang Δ", "title", "brand", "price_clean",
+            "rating", "Rating Δ", "reviews", "Reviews Δ",
+            "est_orders", "bsr", "BSR Δ", "bsr_hauptkategorie", "bsr_subkategorie", "cis_score"
+        ]
+    else:
+        display_cols = [
+            "product_id", "status", "position", "title", "brand", "price_clean", "rating", "reviews",
+            "est_orders", "bsr", "bsr_hauptkategorie", "bsr_subkategorie", "cis_score"
+        ]
 
 st.dataframe(
     df_ranked[display_cols].rename(columns={
@@ -104,6 +145,7 @@ st.dataframe(
         "Rang Δ": "Rang Δ",
         "BSR Δ": "BSR Δ",
         "Reviews Δ": "Reviews Δ",
+        "Rating Δ": "Rating Δ",
     }),
     use_container_width=True,
     height=500,
@@ -125,10 +167,27 @@ selected_asin = st.selectbox(
 if selected_asin:
     df_product = df[df["asin"] == selected_asin].copy()
     df_product["timestamp"] = pd.to_datetime(df_product["timestamp"])
-    df_product = df_product.sort_values("timestamp").drop_duplicates(subset=["timestamp"], keep="first")
+
+    # Pro Zeitpunkt aggregieren (Produkt kann über mehrere Keywords mehrfach vorkommen)
+    agg_cols = {}
+    if "position" in df_product.columns:
+        agg_cols["position"] = "min"  # Bester Rang
+    if "bsr" in df_product.columns:
+        agg_cols["bsr"] = "first"
+    if "reviews" in df_product.columns:
+        agg_cols["reviews"] = "max"
+    if "rating" in df_product.columns:
+        agg_cols["rating"] = "first"
+
+    df_product = (
+        df_product.groupby("timestamp")
+        .agg(agg_cols)
+        .reset_index()
+        .sort_values("timestamp")
+    )
 
     if len(df_product) >= 2:
-        col_t1, col_t2, col_t3 = st.columns(3)
+        col_t1, col_t2, col_t3, col_t4 = st.columns(4)
 
         with col_t1:
             fig_p_rank = px.line(
@@ -155,5 +214,16 @@ if selected_asin:
                 title="Bewertungsanzahl", labels={"reviews": "Reviews", "timestamp": ""},
             )
             st.plotly_chart(fig_p_rev, use_container_width=True)
+
+        with col_t4:
+            if "rating" in df_product.columns and df_product["rating"].notna().any():
+                fig_p_rat = px.line(
+                    df_product, x="timestamp", y="rating", markers=True,
+                    title="Bewertung (Sterne)", labels={"rating": "Rating", "timestamp": ""},
+                )
+                fig_p_rat.update_yaxes(range=[1, 5])
+                st.plotly_chart(fig_p_rat, use_container_width=True)
+            else:
+                st.info("Rating noch nicht verfügbar")
     else:
         st.info("Mindestens 2 Scans für dieses Produkt nötig.")
