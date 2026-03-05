@@ -14,10 +14,22 @@ if df is None or df.empty:
 
 df_view, date_opt = render_sidebar_filters(df)
 
-st.header("🏆 Aktuelles Wettbewerbs-Ranking")
+# --- Keyword-Filter ---
+st.sidebar.markdown("---")
+st.sidebar.header("🔑 Keyword-Filter")
+available_keywords = sorted(df_view["keyword"].dropna().unique())
+keyword_options = ["Alle Keywords"] + available_keywords
+selected_keyword = st.sidebar.selectbox("Keyword", options=keyword_options)
 
-# Sortierung nach Marke, dann Position
-df_ranked = df_view.sort_values(by=["brand", "position"], ascending=[True, True]).reset_index(drop=True)
+if selected_keyword != "Alle Keywords":
+    df_view = df_view[df_view["keyword"] == selected_keyword]
+
+st.header("🏆 Aktuelles Wettbewerbs-Ranking")
+if selected_keyword != "Alle Keywords":
+    st.caption(f"🔑 Keyword: **{selected_keyword}** | Produkte: {len(df_view)}")
+
+# Sortierung nach Position (Rang)
+df_ranked = df_view.sort_values(by=["position"], ascending=[True]).reset_index(drop=True)
 df_ranked.index = df_ranked.index + 1
 
 # --- Vergleichszeitpunkt wählen ---
