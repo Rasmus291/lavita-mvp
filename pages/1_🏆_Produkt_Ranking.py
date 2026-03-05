@@ -14,18 +14,15 @@ if df is None or df.empty:
 
 df_view, date_opt = render_sidebar_filters(df)
 
-# --- Keyword-Filter ---
-st.sidebar.markdown("---")
-st.sidebar.header("🔑 Keyword-Filter")
+st.header("🏆 Aktuelles Wettbewerbs-Ranking")
+
+# --- Keyword-Filter (oben im Hauptbereich) ---
 available_keywords = sorted(df_view["keyword"].dropna().unique())
 keyword_options = ["Alle Keywords"] + available_keywords
-selected_keyword = st.sidebar.selectbox("Keyword", options=keyword_options)
+selected_keyword = st.selectbox("🔑 Keyword filtern", options=keyword_options)
 
 if selected_keyword != "Alle Keywords":
     df_view = df_view[df_view["keyword"] == selected_keyword]
-
-st.header("🏆 Aktuelles Wettbewerbs-Ranking")
-if selected_keyword != "Alle Keywords":
     st.caption(f"🔑 Keyword: **{selected_keyword}** | Produkte: {len(df_view)}")
 
 # Bei "Alle Keywords": Deduplizierung (bester Rang pro Produkt), bei Einzelkeyword: alle zeigen
