@@ -1,15 +1,15 @@
 """
-Manuelle Produktsuche: Keyword eingeben → Amazon scrapen → Produkte zum Tracking hinzufügen.
+Manuelle Produktsuche: Keywords eingeben → Amazon scrapen → Produkte zum Tracking hinzufügen.
 """
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from config import SERPAPI_KEY
+from config import SERPAPI_KEY, KEYWORDS as CONFIG_KEYWORDS
 from scraper import scrape_keyword
 from product_registry import get_registry
 from pipeline import run_manual_pipeline
 from shared import STYLE_CSS, get_latest_values
-from cleaner import clean_price
+from cleaner import clean_price, apply_lavita_relevance_filter
 
 st.set_page_config(page_title="Produkt-Suche", layout="wide", page_icon="🔍")
 st.markdown(STYLE_CSS, unsafe_allow_html=True)
@@ -29,75 +29,125 @@ if "pipeline_result" not in st.session_state:
 
 # --- Suchbereich ---
 st.subheader("1️⃣ Amazon-Suche")
-col_input, col_count = st.columns([3, 1])
 
-with col_input:
-    keyword = st.text_input(
-        "Suchbegriff eingeben",
-        placeholder="z.B. Vitamin D Tropfen, Magnesium Flüssig...",
-        key="keyword_input",
-    )
+# Keyword-Auswahl: vordefinierte Keywords als Multiselect
+selected_keywords = st.multiselect(
+    "Vordefinierte Keywords auswählen",
+    options=CONFIG_KEYWORDS,
+    default=[],
+    help="Wähle ein oder mehrere Keywords aus der Liste.",
+)
 
+# Zusätzliche eigene Keywords (komma-separiert)
+custom_input = st.text_input(
+    "Eigene Keywords eingeben (komma-separiert)",
+    placeholder="z.B. Vitamin D Tropfen, Magnesium Flüssig, Zink Konzentrat",
+    key="keyword_input",
+)
+
+col_count, col_spacer = st.columns([1, 3])
 with col_count:
-    max_results = st.number_input("Max. Ergebnisse", min_value=5, max_value=50, value=20, step=5)
+    max_results = st.number_input("Max. Ergebnisse pro Keyword", min_value=5, max_value=50, value=20, step=5)
+
+# Alle Keywords zusammenführen
+all_keywords = list(selected_keywords)
+if custom_input.strip():
+    custom_keywords = [k.strip() for k in custom_input.split(",") if k.strip()]
+    all_keywords.extend(custom_keywords)
+# Duplikate entfernen, Reihenfolge beibehalten
+seen = set()
+unique_keywords = []
+for kw in all_keywords:
+    if kw.lower() not in seen:
+        seen.add(kw.lower())
+        unique_keywords.append(kw)
+
+if unique_keywords:
+    st.info(f"**{len(unique_keywords)} Keyword(s):** {', '.join(unique_keywords)}")
 
 search_clicked = st.button("🔎 Suchen", type="primary", use_container_width=True)
 
-if search_clicked and keyword.strip():
+if search_clicked and unique_keywords:
     st.session_state.pipeline_done = False
     st.session_state.pipeline_result = None
     st.session_state.pop("selections", None)
 
-    with st.spinner(f"Suche nach \"{keyword}\" auf Amazon.de..."):
-        results = scrape_keyword(SERPAPI_KEY, keyword.strip(), max_results=max_results)
+    all_results = []
+    progress_bar = st.progress(0, text="Starte Suche…")
 
-    if results:
-        df = pd.DataFrame(results)
+    for i, kw in enumerate(unique_keywords):
+        progress_bar.progress(
+            (i) / len(unique_keywords),
+            text=f"Suche nach \"{kw}\" ({i + 1}/{len(unique_keywords)})…"
+        )
+        results = scrape_keyword(SERPAPI_KEY, kw.strip(), max_results=max_results)
+        if results:
+            for r in results:
+                r["search_keyword"] = kw
+            all_results.extend(results)
 
-        # Bereits getrackte ASINs markieren
-        registry = get_registry()
-        tracked_asins = set(registry["asin"].dropna().tolist()) if not registry.empty else set()
-        df["already_tracked"] = df["asin"].isin(tracked_asins)
+    progress_bar.progress(1.0, text="Suche abgeschlossen!")
 
-        # Vorherige Werte aus master_data laden
-        prev_values = get_latest_values(df["asin"].tolist())
-        if not prev_values.empty:
-            df = df.merge(prev_values, on="asin", how="left")
+    if all_results:
+        df = pd.DataFrame(all_results)
+        # Duplikate über ASIN entfernen (erstes Keyword behält Priorität)
+        df = df.drop_duplicates(subset=["asin"], keep="first")
+        total_scraped = len(df)
+
+        # LaVita-Relevanzfilter: nur flüssige Supplements, keine Kapseln/Tabletten/Fruchtsäfte etc.
+        df, _ = apply_lavita_relevance_filter(df)
+
+        if df.empty:
+            st.warning(f"Keine LaVita-relevanten Produkte unter {total_scraped} Ergebnissen gefunden.")
+            st.session_state.search_results = None
         else:
-            df["prev_position"] = None
-            df["prev_price"] = None
-            df["prev_rating"] = None
-            df["prev_reviews"] = None
-            df["prev_bsr"] = None
-            df["prev_timestamp"] = None
+            st.info(f"🔍 {total_scraped} Ergebnisse von Amazon → **{len(df)} LaVita-relevant** (nach Filter)")
 
-        # Preis bereinigen für Vergleich
-        df["price_clean"] = df["price"].apply(clean_price)
+            # Bereits getrackte ASINs markieren
+            registry = get_registry()
+            tracked_asins = set(registry["asin"].dropna().tolist()) if not registry.empty else set()
+            df["already_tracked"] = df["asin"].isin(tracked_asins)
 
-        # Deltas berechnen
-        df["reviews_num"] = pd.to_numeric(df["reviews"], errors="coerce").fillna(0)
-        df["pos_delta"] = df.apply(
-            lambda r: int(r["position"] - r["prev_position"]) if pd.notna(r.get("prev_position")) else None, axis=1
-        )
-        df["price_delta"] = df.apply(
-            lambda r: round(r["price_clean"] - r["prev_price"], 2) if pd.notna(r.get("prev_price")) and pd.notna(r.get("price_clean")) else None, axis=1
-        )
-        df["rating_delta"] = df.apply(
-            lambda r: round(float(r["rating"]) - float(r["prev_rating"]), 1) if pd.notna(r.get("prev_rating")) and pd.notna(r.get("rating")) else None, axis=1
-        )
-        df["reviews_delta"] = df.apply(
-            lambda r: int(r["reviews_num"] - r["prev_reviews"]) if pd.notna(r.get("prev_reviews")) else None, axis=1
-        )
+            # Vorherige Werte aus master_data laden
+            prev_values = get_latest_values(df["asin"].tolist())
+            if not prev_values.empty:
+                df = df.merge(prev_values, on="asin", how="left")
+            else:
+                df["prev_position"] = None
+                df["prev_price"] = None
+                df["prev_rating"] = None
+                df["prev_reviews"] = None
+                df["prev_bsr"] = None
+                df["prev_timestamp"] = None
 
-        st.session_state.search_results = df
-        st.session_state.search_keyword = keyword.strip()
-        st.success(f"✅ {len(df)} Produkte gefunden für \"{keyword}\"")
+            # Preis bereinigen für Vergleich
+            df["price_clean"] = df["price"].apply(clean_price)
+
+            # Deltas berechnen
+            df["reviews_num"] = pd.to_numeric(df["reviews"], errors="coerce").fillna(0)
+            df["pos_delta"] = df.apply(
+                lambda r: int(r["position"] - r["prev_position"]) if pd.notna(r.get("prev_position")) else None, axis=1
+            )
+            df["price_delta"] = df.apply(
+                lambda r: round(r["price_clean"] - r["prev_price"], 2) if pd.notna(r.get("prev_price")) and pd.notna(r.get("price_clean")) else None, axis=1
+            )
+            df["rating_delta"] = df.apply(
+                lambda r: round(float(r["rating"]) - float(r["prev_rating"]), 1) if pd.notna(r.get("prev_rating")) and pd.notna(r.get("rating")) else None, axis=1
+            )
+            df["reviews_delta"] = df.apply(
+                lambda r: int(r["reviews_num"] - r["prev_reviews"]) if pd.notna(r.get("prev_reviews")) else None, axis=1
+            )
+
+            kw_label = ", ".join(unique_keywords)
+            st.session_state.search_results = df
+            st.session_state.search_keyword = kw_label
+            st.success(f"✅ {len(df)} LaVita-relevante Produkte für {len(unique_keywords)} Keyword(s) gefunden")
     else:
         st.session_state.search_results = None
         st.warning("Keine Ergebnisse gefunden. Versuche einen anderen Suchbegriff.")
 
-elif search_clicked and not keyword.strip():
-    st.warning("Bitte einen Suchbegriff eingeben.")
+elif search_clicked and not unique_keywords:
+    st.warning("Bitte mindestens ein Keyword auswählen oder eingeben.")
 
 
 def _format_delta(val, invert=False, fmt="d"):

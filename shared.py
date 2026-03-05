@@ -150,3 +150,36 @@ def render_sidebar_filters(df):
         st.sidebar.info("🏆 BSR-Daten noch nicht verfügbar. Starte `python main.py` erneut.")
 
     return df_view, date_opt
+
+
+def get_latest_values(asins: list) -> pd.DataFrame:
+    """
+    Gibt die letzten bekannten Werte für eine Liste von ASINs zurück.
+    Wird in der Produkt-Suche genutzt um Deltas zu berechnen.
+    """
+    raw = load_raw_data()
+    if raw is None or raw.empty:
+        return pd.DataFrame()
+
+    # Nur ASINs die wir kennen
+    df = raw[raw["asin"].isin(asins)].copy()
+    if df.empty:
+        return pd.DataFrame()
+
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df = df.sort_values("timestamp", ascending=False)
+
+    # Letzten Eintrag pro ASIN
+    latest = df.drop_duplicates(subset=["asin"], keep="first")
+
+    from cleaner import clean_price
+
+    result = latest[["asin"]].copy()
+    result["prev_position"] = latest["position"].values
+    result["prev_price"] = latest["price"].apply(clean_price).values
+    result["prev_rating"] = pd.to_numeric(latest["rating"], errors="coerce").values
+    result["prev_reviews"] = pd.to_numeric(latest["reviews"], errors="coerce").values
+    result["prev_bsr"] = pd.to_numeric(latest.get("bsr", pd.Series(dtype=float)), errors="coerce").values if "bsr" in latest.columns else None
+    result["prev_timestamp"] = latest["timestamp"].values
+
+    return result
