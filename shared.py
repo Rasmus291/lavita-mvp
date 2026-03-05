@@ -26,6 +26,8 @@ STYLE_CSS = """
     }
     .rank-high {color: green; font-weight: bold;}
     .rank-low {color: red; font-weight: bold;}
+    /* Hauptseiten-Link (app) in der Sidebar ausblenden */
+    [data-testid="stSidebarNav"] > ul > li:first-child { display: none; }
 </style>
 """
 

@@ -1,10 +1,11 @@
-# import streamlit as st
+import streamlit as st
 # import pandas as pd
 # import plotly.express as px
 # from shared import get_data, render_sidebar_filters, STYLE_CSS
+from shared import STYLE_CSS
 
-# st.set_page_config(page_title="Trends", layout="wide", page_icon="📈")
-# st.markdown(STYLE_CSS, unsafe_allow_html=True)
+st.set_page_config(page_title="Trends", layout="wide", page_icon="📈")
+st.markdown(STYLE_CSS, unsafe_allow_html=True)
 
 # df = get_data()
 # if df is None or df.empty:
