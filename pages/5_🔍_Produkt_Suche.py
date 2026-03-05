@@ -72,6 +72,9 @@ if search_clicked and unique_keywords:
     st.session_state.pipeline_result = None
     st.session_state.pop("selections", None)
 
+    # Mehr scrapen als angefordert, um nach Filter genug Ergebnisse zu haben
+    scrape_count = min(max_results * 3, 100)
+
     all_results = []
     progress_bar = st.progress(0, text="Starte Suche…")
 
@@ -80,7 +83,7 @@ if search_clicked and unique_keywords:
             (i) / len(unique_keywords),
             text=f"Suche nach \"{kw}\" ({i + 1}/{len(unique_keywords)})…"
         )
-        results = scrape_keyword(SERPAPI_KEY, kw.strip(), max_results=max_results)
+        results = scrape_keyword(SERPAPI_KEY, kw.strip(), max_results=scrape_count)
         if results:
             for r in results:
                 r["search_keyword"] = kw
@@ -97,11 +100,18 @@ if search_clicked and unique_keywords:
         # LaVita-Relevanzfilter: nur flüssige Supplements, keine Kapseln/Tabletten/Fruchtsäfte etc.
         df, _ = apply_lavita_relevance_filter(df)
 
+        # Auf gewünschte Anzahl trimmen
+        total_relevant = len(df)
+        df = df.head(max_results)
+
         if df.empty:
             st.warning(f"Keine LaVita-relevanten Produkte unter {total_scraped} Ergebnissen gefunden.")
             st.session_state.search_results = None
         else:
-            st.info(f"🔍 {total_scraped} Ergebnisse von Amazon → **{len(df)} LaVita-relevant** (nach Filter)")
+            st.info(
+                f"🔍 {total_scraped} gescrapt → {total_relevant} LaVita-relevant → "
+                f"**{len(df)} angezeigt** (Limit: {max_results})"
+            )
 
             # Bereits getrackte ASINs markieren
             registry = get_registry()

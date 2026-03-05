@@ -161,7 +161,7 @@ selected_asin = st.selectbox(
 
 if selected_asin:
     df_product = df[df["asin"] == selected_asin].copy()
-    df_product["timestamp"] = pd.to_datetime(df_product["timestamp"])
+    df_product["timestamp"] = pd.to_datetime(df_product["timestamp"], format='mixed')
 
     # Pro Zeitpunkt aggregieren (Produkt kann über mehrere Keywords mehrfach vorkommen)
     agg_cols = {}
