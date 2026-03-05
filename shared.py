@@ -95,13 +95,7 @@ def render_sidebar_filters(df):
     df_slice = df[df['timestamp'] == date_opt]
     df_slice = df_slice.sort_values('position').drop_duplicates(subset=['asin'], keep='first')
 
-    # Grade
-    selected_grades = st.sidebar.multiselect(
-        "Wettbewerbs-Grade",
-        options=[1, 2, 3, 4, 5],
-        default=[1, 2, 3]
-    )
-    df_view = df_slice[df_slice['competition_grade'].isin(selected_grades)]
+    df_view = df_slice.copy()
 
     # BSR
     if "bsr" in df_view.columns and df_view["bsr"].notna().any():
