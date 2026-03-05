@@ -70,3 +70,51 @@ def run_full_pipeline(api_key: str, keywords: list, save_interim: bool = True) -
 
     print("✅ Pipeline abgeschlossen.")
     return kpi_data
+
+
+def run_manual_pipeline(selected_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Pipeline für manuell ausgewählte Produkte (kein Scraping, kein Filter).
+    1. Klassifikation
+    2. Produkt-IDs zuweisen
+    3. BSR anreichern
+    4. KPIs berechnen
+    5. An master_data.csv anhängen
+
+    Gibt den verarbeiteten DataFrame zurück.
+    """
+    if selected_df.empty:
+        return selected_df
+
+    os.makedirs("data", exist_ok=True)
+
+    print("🔄 Manuelle Pipeline gestartet...")
+
+    # 1. Klassifikation
+    selected_df = selected_df.copy()
+    selected_df["competition_grade"] = selected_df["title"].apply(
+        lambda t: classify(str(t))
+    )
+
+    # 2. Produkt-IDs zuweisen
+    print("🔍 Produkt-IDs zuweisen...")
+    selected_df = assign_product_ids(selected_df)
+
+    # 3. BSR-Daten anreichern
+    print("📦 BSR-Daten abrufen...")
+    selected_df = enrich_with_bsr(selected_df)
+
+    # 4. KPIs berechnen
+    processed_df = calculator.process(selected_df)
+
+    # 5. An master_data.csv anhängen
+    if os.path.exists(MASTER_DATA_FILE):
+        old = pd.read_csv(MASTER_DATA_FILE)
+        master = pd.concat([old, processed_df], ignore_index=True)
+    else:
+        master = processed_df
+
+    master.to_csv(MASTER_DATA_FILE, index=False)
+
+    print("✅ Manuelle Pipeline abgeschlossen.")
+    return processed_df
