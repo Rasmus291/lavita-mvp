@@ -7,7 +7,7 @@ from config import MASTER_DATA_FILE, RAW_DATA_FILE, FILTERED_DATA_FILE, KPI_DATA
 from scraper import scrape_keyword
 from bsr_scraper import enrich_with_bsr
 from cleaner import apply_filters
-from classifier import classify
+from classifier import classify, classify_product
 from product_registry import assign_product_ids
 import calculator
 
@@ -38,18 +38,16 @@ def run_full_pipeline(api_key: str, keywords: list, save_interim: bool = True) -
     # 2. Filter & Clean
     filtered_data = apply_filters(raw_data)
 
-    # 3. Klassifikation
-    filtered_data["competition_grade"] = filtered_data["title"].apply(
-        lambda t: classify(str(t))
-    )
-
-    # 3b. Produkt-IDs zuweisen (neue vs. bekannte Produkte)
+    # 3. Produkt-IDs zuweisen (neue vs. bekannte Produkte)
     print("🔍 Produkt-IDs zuweisen...")
     filtered_data = assign_product_ids(filtered_data)
 
-    # 4. BSR-Daten anreichern
+    # 4. BSR-Daten anreichern (VOR Klassifikation, da Browse-Nodes benötigt)
     print("📦 BSR-Daten abrufen...")
     filtered_data = enrich_with_bsr(filtered_data)
+
+    # 5. Klassifikation (nutzt Title + Browse-Nodes)
+    filtered_data["competition_grade"] = filtered_data.apply(classify_product, axis=1)
 
     if save_interim:
         filtered_data.to_csv(FILTERED_DATA_FILE, index=False)
@@ -90,19 +88,17 @@ def run_manual_pipeline(selected_df: pd.DataFrame) -> pd.DataFrame:
 
     print("🔄 Manuelle Pipeline gestartet...")
 
-    # 1. Klassifikation
+    # 1. Produkt-IDs zuweisen
     selected_df = selected_df.copy()
-    selected_df["competition_grade"] = selected_df["title"].apply(
-        lambda t: classify(str(t))
-    )
-
-    # 2. Produkt-IDs zuweisen
     print("🔍 Produkt-IDs zuweisen...")
     selected_df = assign_product_ids(selected_df)
 
-    # 3. BSR-Daten anreichern
+    # 2. BSR-Daten anreichern (VOR Klassifikation, da Browse-Nodes benötigt)
     print("📦 BSR-Daten abrufen...")
     selected_df = enrich_with_bsr(selected_df)
+
+    # 3. Klassifikation (nutzt Title + Browse-Nodes)
+    selected_df["competition_grade"] = selected_df.apply(classify_product, axis=1)
 
     # 4. KPIs berechnen
     processed_df = calculator.process(selected_df)

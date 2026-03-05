@@ -19,20 +19,11 @@ def clean_price(price) -> float | None:
 
 def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Filtert Produkte nach Format (flüssig/pulver), schließt Kapseln aus,
-    und wendet Mindest-Reviews + Preis-Checks an.
+    Filtert Produkte: Basis-Qualitätsfilter (Reviews, Preis).
+    Format-Filterung entfällt – die Klassifikation (classifier.py) übernimmt
+    die Einordnung in die 5 Ähnlichkeits-Kategorien.
     """
     df = df.dropna(subset=["title"])
-
-    # Format: Flüssig/Saft/Konzentrat/Pulver
-    mask_format = df["title"].str.contains(
-        "flüssig|saft|konzentrat|pulver|trinkpulver", case=False, na=False
-    )
-
-    # Ausschluss: Kapseln
-    mask_no_capsules = ~df["title"].str.contains(
-        "kapsel|kapseln|capsule|capsules", case=False, na=False
-    )
 
     # Mindestreviews (>50)
     mask_reviews = df["reviews"].fillna(0) > 50
@@ -40,6 +31,7 @@ def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
     # Preis vorhanden
     mask_price = df["price"].notnull()
 
+<<<<<<< HEAD
     return df[mask_format & mask_no_capsules & mask_reviews & mask_price]
 
 
@@ -126,3 +118,6 @@ def apply_lavita_relevance_filter(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
         print(f"  LaVita-Relevanzfilter: {excluded_count} von {total_before} Produkten ausgeschlossen")
 
     return filtered, total_before
+=======
+    return df[mask_reviews & mask_price]
+>>>>>>> 2366af1431db930f68a052f556dbeb5161179b91
