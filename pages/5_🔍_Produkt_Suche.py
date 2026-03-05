@@ -9,7 +9,7 @@ from scraper import scrape_keyword
 from product_registry import get_registry
 from pipeline import run_manual_pipeline
 from shared import STYLE_CSS, get_latest_values
-from cleaner import clean_price
+from cleaner import clean_price, apply_lavita_relevance_filter
 
 st.set_page_config(page_title="Produkt-Suche", layout="wide", page_icon="🔍")
 st.markdown(STYLE_CSS, unsafe_allow_html=True)
@@ -53,45 +53,55 @@ if search_clicked and keyword.strip():
 
     if results:
         df = pd.DataFrame(results)
+        total_scraped = len(df)
 
-        # Bereits getrackte ASINs markieren
-        registry = get_registry()
-        tracked_asins = set(registry["asin"].dropna().tolist()) if not registry.empty else set()
-        df["already_tracked"] = df["asin"].isin(tracked_asins)
+        # LaVita-Relevanzfilter: nur flüssige Supplements, keine Kapseln/Tabletten/Fruchtsäfte etc.
+        df, _ = apply_lavita_relevance_filter(df)
 
-        # Vorherige Werte aus master_data laden
-        prev_values = get_latest_values(df["asin"].tolist())
-        if not prev_values.empty:
-            df = df.merge(prev_values, on="asin", how="left")
+        if df.empty:
+            st.warning(f"Keine LaVita-relevanten Produkte unter {total_scraped} Ergebnissen gefunden.")
+            st.session_state.search_results = None
         else:
-            df["prev_position"] = None
-            df["prev_price"] = None
-            df["prev_rating"] = None
-            df["prev_reviews"] = None
-            df["prev_bsr"] = None
-            df["prev_timestamp"] = None
+            st.info(f"🔍 {total_scraped} Ergebnisse von Amazon → **{len(df)} LaVita-relevant** (nach Filter)")
 
-        # Preis bereinigen für Vergleich
-        df["price_clean"] = df["price"].apply(clean_price)
+            # Bereits getrackte ASINs markieren
+            registry = get_registry()
+            tracked_asins = set(registry["asin"].dropna().tolist()) if not registry.empty else set()
+            df["already_tracked"] = df["asin"].isin(tracked_asins)
 
-        # Deltas berechnen
-        df["reviews_num"] = pd.to_numeric(df["reviews"], errors="coerce").fillna(0)
-        df["pos_delta"] = df.apply(
-            lambda r: int(r["position"] - r["prev_position"]) if pd.notna(r.get("prev_position")) else None, axis=1
-        )
-        df["price_delta"] = df.apply(
-            lambda r: round(r["price_clean"] - r["prev_price"], 2) if pd.notna(r.get("prev_price")) and pd.notna(r.get("price_clean")) else None, axis=1
-        )
-        df["rating_delta"] = df.apply(
-            lambda r: round(float(r["rating"]) - float(r["prev_rating"]), 1) if pd.notna(r.get("prev_rating")) and pd.notna(r.get("rating")) else None, axis=1
-        )
-        df["reviews_delta"] = df.apply(
-            lambda r: int(r["reviews_num"] - r["prev_reviews"]) if pd.notna(r.get("prev_reviews")) else None, axis=1
-        )
+            # Vorherige Werte aus master_data laden
+            prev_values = get_latest_values(df["asin"].tolist())
+            if not prev_values.empty:
+                df = df.merge(prev_values, on="asin", how="left")
+            else:
+                df["prev_position"] = None
+                df["prev_price"] = None
+                df["prev_rating"] = None
+                df["prev_reviews"] = None
+                df["prev_bsr"] = None
+                df["prev_timestamp"] = None
 
-        st.session_state.search_results = df
-        st.session_state.search_keyword = keyword.strip()
-        st.success(f"✅ {len(df)} Produkte gefunden für \"{keyword}\"")
+            # Preis bereinigen für Vergleich
+            df["price_clean"] = df["price"].apply(clean_price)
+
+            # Deltas berechnen
+            df["reviews_num"] = pd.to_numeric(df["reviews"], errors="coerce").fillna(0)
+            df["pos_delta"] = df.apply(
+                lambda r: int(r["position"] - r["prev_position"]) if pd.notna(r.get("prev_position")) else None, axis=1
+            )
+            df["price_delta"] = df.apply(
+                lambda r: round(r["price_clean"] - r["prev_price"], 2) if pd.notna(r.get("prev_price")) and pd.notna(r.get("price_clean")) else None, axis=1
+            )
+            df["rating_delta"] = df.apply(
+                lambda r: round(float(r["rating"]) - float(r["prev_rating"]), 1) if pd.notna(r.get("prev_rating")) and pd.notna(r.get("rating")) else None, axis=1
+            )
+            df["reviews_delta"] = df.apply(
+                lambda r: int(r["reviews_num"] - r["prev_reviews"]) if pd.notna(r.get("prev_reviews")) else None, axis=1
+            )
+
+            st.session_state.search_results = df
+            st.session_state.search_keyword = keyword.strip()
+            st.success(f"✅ {len(df)} LaVita-relevante Produkte gefunden für \"{keyword}\"")
     else:
         st.session_state.search_results = None
         st.warning("Keine Ergebnisse gefunden. Versuche einen anderen Suchbegriff.")
