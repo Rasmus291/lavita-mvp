@@ -16,14 +16,15 @@ df_view, date_opt = render_sidebar_filters(df)
 
 st.header("🏆 Aktuelles Wettbewerbs-Ranking")
 
-# --- Keyword-Filter (oben im Hauptbereich) ---
+# --- Keyword-Filter (Sidebar) ---
+st.sidebar.markdown("---")
+st.sidebar.header("🔑 Keyword-Filter")
 available_keywords = sorted(df_view["keyword"].dropna().unique())
 keyword_options = ["Alle Keywords"] + available_keywords
-selected_keyword = st.selectbox("🔑 Keyword filtern", options=keyword_options)
+selected_keyword = st.sidebar.selectbox("Keyword", options=keyword_options)
 
 if selected_keyword != "Alle Keywords":
     df_view = df_view[df_view["keyword"] == selected_keyword]
-    st.caption(f"🔑 Keyword: **{selected_keyword}** | Produkte: {len(df_view)}")
 
 # Bei "Alle Keywords": Deduplizierung (bester Rang pro Produkt), bei Einzelkeyword: alle zeigen
 if selected_keyword == "Alle Keywords":
@@ -93,16 +94,7 @@ else:
 if "product_id" not in df_ranked.columns:
     df_ranked["product_id"] = ""
 
-# Spalten zusammenstellen
-display_cols = ["product_id", "status", "position", "title", "brand", "price_clean", "rating", "reviews", "est_orders", "bsr", "cis_score"]
-
-if has_trends:
-    display_cols = [
-        "product_id", "status", "position", "Rang Δ", "title", "brand", "price_clean",
-        "rating", "Rating Δ", "reviews", "Reviews Δ", "est_orders", "bsr", "BSR Δ", "cis_score"
-    ]
-
-# BSR-Kategorie-Spalte hinzufügen
+# BSR-Kategorie als filterbare Spalte in die Tabelle einfügen
 if "bsr_categories" in df_ranked.columns and df_ranked["bsr_categories"].notna().any():
     def extract_main_category(cat_str):
         try:
@@ -111,33 +103,25 @@ if "bsr_categories" in df_ranked.columns and df_ranked["bsr_categories"].notna()
                 return list(d.keys())[0]
         except (ValueError, SyntaxError):
             pass
-        return None
+        return ""
 
-    def extract_sub_category(cat_str):
-        try:
-            d = ast.literal_eval(str(cat_str))
-            if isinstance(d, dict) and len(d) > 1:
-                keys = list(d.keys())
-                vals = list(d.values())
-                return f"Nr. {vals[1]} in {keys[1]}"
-        except (ValueError, SyntaxError):
-            pass
-        return None
+    df_ranked["bsr_kategorie"] = df_ranked["bsr_categories"].apply(extract_main_category)
 
-    df_ranked["bsr_hauptkategorie"] = df_ranked["bsr_categories"].apply(extract_main_category)
-    df_ranked["bsr_subkategorie"] = df_ranked["bsr_categories"].apply(extract_sub_category)
+# Spalten zusammenstellen
+base_cols = ["product_id", "status", "position", "title", "brand", "price_clean", "rating", "reviews", "est_orders", "bsr"]
+if "bsr_kategorie" in df_ranked.columns:
+    base_cols.append("bsr_kategorie")
+base_cols.append("cis_score")
 
-    if has_trends:
-        display_cols = [
-            "product_id", "status", "position", "Rang Δ", "title", "brand", "price_clean",
-            "rating", "Rating Δ", "reviews", "Reviews Δ",
-            "est_orders", "bsr", "BSR Δ", "bsr_hauptkategorie", "bsr_subkategorie", "cis_score"
-        ]
-    else:
-        display_cols = [
-            "product_id", "status", "position", "title", "brand", "price_clean", "rating", "reviews",
-            "est_orders", "bsr", "bsr_hauptkategorie", "bsr_subkategorie", "cis_score"
-        ]
+if has_trends:
+    trend_cols = ["product_id", "status", "position", "Rang Δ", "title", "brand", "price_clean",
+        "rating", "Rating Δ", "reviews", "Reviews Δ", "est_orders", "bsr", "BSR Δ"]
+    if "bsr_kategorie" in df_ranked.columns:
+        trend_cols.append("bsr_kategorie")
+    trend_cols.append("cis_score")
+    display_cols = trend_cols
+else:
+    display_cols = base_cols
 
 st.dataframe(
     df_ranked[display_cols].rename(columns={
@@ -150,9 +134,8 @@ st.dataframe(
         "rating": "Bewertung",
         "reviews": "Rezensionen",
         "est_orders": "Gesch. Bestellungen",
-        "bsr": "BSR (Haupt)",
-        "bsr_hauptkategorie": "BSR-Kategorie",
-        "bsr_subkategorie": "BSR-Subkategorie",
+        "bsr": "BSR",
+        "bsr_kategorie": "BSR-Kategorie",
         "cis_score": "Score",
         "Rang Δ": "Rang Δ",
         "BSR Δ": "BSR Δ",
