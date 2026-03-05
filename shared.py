@@ -81,6 +81,41 @@ def get_data():
     return prepare_data(raw)
 
 
+def get_latest_values(asins: list) -> pd.DataFrame:
+    """
+    Holt die letzten bekannten Werte aus master_data.csv für eine Liste von ASINs.
+    Gibt einen DataFrame mit den neuesten Werten pro ASIN zurück.
+    Spalten: asin, prev_position, prev_price, prev_rating, prev_reviews, prev_bsr, prev_timestamp
+    """
+    if not os.path.exists(DATA_FILE):
+        return pd.DataFrame(columns=["asin"])
+
+    df = pd.read_csv(DATA_FILE)
+    if df.empty or "asin" not in df.columns:
+        return pd.DataFrame(columns=["asin"])
+
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df = df[df["asin"].isin(asins)]
+
+    if df.empty:
+        return pd.DataFrame(columns=["asin"])
+
+    # Pro ASIN die neueste Zeile nehmen
+    df = df.sort_values("timestamp", ascending=False).drop_duplicates(subset=["asin"], keep="first")
+
+    rename_map = {
+        "position": "prev_position",
+        "price_clean": "prev_price",
+        "rating": "prev_rating",
+        "reviews": "prev_reviews",
+        "bsr": "prev_bsr",
+        "timestamp": "prev_timestamp",
+    }
+    keep_cols = ["asin"] + [c for c in rename_map.keys() if c in df.columns]
+    result = df[keep_cols].rename(columns=rename_map)
+    return result
+
+
 def render_sidebar_filters(df):
     """
     Rendert die Sidebar-Filter und gibt (df_view, date_opt) zurück.
