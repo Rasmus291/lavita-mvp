@@ -101,22 +101,30 @@ def scrape_product_details(asin: str) -> dict:
     }
 
 
-def enrich_with_bsr(df: pd.DataFrame, delay: float = 1.5) -> pd.DataFrame:
+def enrich_with_bsr(df: pd.DataFrame, delay: float = 0.5, progress_callback=None) -> pd.DataFrame:
     """
     Reichert DataFrame mit BSR-Daten, Kategorien und Marke an.
+    progress_callback: optional callable(current, total) für Fortschrittsanzeige.
     """
     unique_asins = df["asin"].dropna().unique()
     bsr_map = {}
     bsr_categories_map = {}
     brand_map = {}
+    total = len(unique_asins)
 
     for i, asin in enumerate(unique_asins):
-        print(f"   -> Details abrufen: {asin} ({i+1}/{len(unique_asins)})")
+        print(f"   -> Details abrufen: {asin} ({i+1}/{total})")
+        if progress_callback:
+            progress_callback(i, total)
         details = scrape_product_details(asin)
         bsr_map[asin] = details["bsr"]
         bsr_categories_map[asin] = details["bsr_categories"]
         brand_map[asin] = details["brand"]
-        time.sleep(delay)
+        if i < total - 1:  # kein Sleep nach letztem Request
+            time.sleep(delay)
+
+    if progress_callback:
+        progress_callback(total, total)
 
     df["bsr"] = df["asin"].map(bsr_map)
     df["bsr_categories"] = df["asin"].map(bsr_categories_map)

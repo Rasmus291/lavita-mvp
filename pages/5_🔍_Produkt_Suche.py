@@ -302,6 +302,14 @@ if st.session_state.search_results is not None and not st.session_state.pipeline
 
     st.info(f"📋 **{n_selected}** Produkte ausgewählt ({n_new} neu, {n_already} Updates)")
 
+    col_bsr, col_spacer2 = st.columns([2, 3])
+    with col_bsr:
+        skip_bsr = st.checkbox(
+            "⚡ Schnellmodus (ohne BSR-Scraping)",
+            value=False,
+            help="Überspringt das BSR-Scraping von Amazon. Spart ca. 1 Sekunde pro Produkt. BSR-Daten können später über die Pipeline nachgeholt werden.",
+        )
+
     track_clicked = st.button(
         f"🚀 {n_selected} Produkte zum Tracking hinzufügen",
         type="primary",
@@ -317,8 +325,26 @@ if st.session_state.search_results is not None and not st.session_state.pipeline
                      "reviews_num", "pos_delta", "price_delta", "rating_delta", "reviews_delta"]
         selected_df = selected_df.drop(columns=[c for c in drop_cols if c in selected_df.columns])
 
-        with st.spinner("Pipeline läuft: Klassifikation → Registrierung → BSR → KPIs..."):
-            result = run_manual_pipeline(selected_df)
+        if skip_bsr:
+            with st.spinner("Pipeline läuft: Registrierung → Klassifikation → KPIs... (ohne BSR)"):
+                result = run_manual_pipeline(selected_df, skip_bsr=True)
+        else:
+            bsr_progress = st.progress(0, text="BSR-Daten werden abgerufen…")
+
+            def _bsr_callback(current, total):
+                if total > 0:
+                    bsr_progress.progress(
+                        current / total,
+                        text=f"BSR-Daten: {current}/{total} Produkte…"
+                    )
+
+            with st.spinner("Pipeline läuft: Registrierung → BSR → Klassifikation → KPIs..."):
+                result = run_manual_pipeline(
+                    selected_df,
+                    skip_bsr=False,
+                    bsr_progress_callback=_bsr_callback,
+                )
+            bsr_progress.progress(1.0, text="BSR-Daten abgeschlossen ✅")
 
         st.session_state.pipeline_done = True
         st.session_state.pipeline_result = result
