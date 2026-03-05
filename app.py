@@ -15,7 +15,9 @@ df_view, date_opt = render_sidebar_filters(df)
 
 # --- HEADER ---
 st.title("💊 Lavita Wettbewerbs-Monitor")
-st.caption(f"📅 Stand: {pd.to_datetime(date_opt).strftime('%d.%m.%Y %H:%M')} | 📂 Produkte: {len(df_view)}")
+new_count = len(df_view[df_view["is_new"] == True]) if "is_new" in df_view.columns else 0
+new_label = f" | 🆕 Neue Produkte: {new_count}" if new_count > 0 else ""
+st.caption(f"📅 Stand: {pd.to_datetime(date_opt).strftime('%d.%m.%Y %H:%M')} | 📂 Produkte: {len(df_view)}{new_label}")
 
 # --- KPI-METRIKEN ---
 col1, col2, col3, col4, col5, col6, col7 = st.columns(7)

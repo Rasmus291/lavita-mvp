@@ -38,12 +38,22 @@ if len(timestamps_sorted) >= 2:
     df_ranked["Reviews Δ"] = df_ranked["reviews"] - df_ranked["prev_reviews"]
     has_trends = True
 
+# Neu-Kennzeichnung
+if "is_new" in df_ranked.columns:
+    df_ranked["status"] = df_ranked["is_new"].apply(lambda x: "🆕 Neu" if x else "")
+else:
+    df_ranked["status"] = ""
+
+# product_id sicherstellen
+if "product_id" not in df_ranked.columns:
+    df_ranked["product_id"] = ""
+
 # Spalten zusammenstellen
-display_cols = ["position", "title", "brand", "price_clean", "rating", "reviews", "est_orders", "bsr", "cis_score"]
+display_cols = ["product_id", "status", "position", "title", "brand", "price_clean", "rating", "reviews", "est_orders", "bsr", "cis_score"]
 
 if has_trends:
     display_cols = [
-        "position", "Rang Δ", "title", "brand", "price_clean",
+        "product_id", "status", "position", "Rang Δ", "title", "brand", "price_clean",
         "rating", "reviews", "Reviews Δ", "est_orders", "bsr", "BSR Δ", "cis_score"
     ]
 
@@ -72,12 +82,14 @@ if "bsr_categories" in df_ranked.columns and df_ranked["bsr_categories"].notna()
     df_ranked["bsr_hauptkategorie"] = df_ranked["bsr_categories"].apply(extract_main_category)
     df_ranked["bsr_subkategorie"] = df_ranked["bsr_categories"].apply(extract_sub_category)
     display_cols = [
-        "position", "title", "brand", "price_clean", "rating", "reviews",
+        "product_id", "status", "position", "title", "brand", "price_clean", "rating", "reviews",
         "est_orders", "bsr", "bsr_hauptkategorie", "bsr_subkategorie", "cis_score"
     ]
 
 st.dataframe(
     df_ranked[display_cols].rename(columns={
+        "product_id": "ID",
+        "status": "Status",
         "position": "Amazon-Rang",
         "title": "Produkt",
         "brand": "Marke",
@@ -101,8 +113,8 @@ st.dataframe(
 st.markdown("---")
 st.subheader("📈 Produkt-Trend (Einzelprodukt)")
 
-product_options = df_ranked[["asin", "title"]].drop_duplicates()
-product_labels = {row["asin"]: row["title"][:70] for _, row in product_options.iterrows()}
+product_options = df_ranked[["asin", "title", "product_id"]].drop_duplicates(subset=["asin"])
+product_labels = {row["asin"]: f"[{row['product_id']}] {row['title'][:65]}" for _, row in product_options.iterrows()}
 
 selected_asin = st.selectbox(
     "Produkt wählen",

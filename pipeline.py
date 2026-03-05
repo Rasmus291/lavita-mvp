@@ -8,6 +8,7 @@ from scraper import scrape_keyword
 from bsr_scraper import enrich_with_bsr
 from cleaner import apply_filters
 from classifier import classify
+from product_registry import assign_product_ids
 import calculator
 
 
@@ -41,6 +42,10 @@ def run_full_pipeline(api_key: str, keywords: list, save_interim: bool = True) -
     filtered_data["competition_grade"] = filtered_data["title"].apply(
         lambda t: classify(str(t))
     )
+
+    # 3b. Produkt-IDs zuweisen (neue vs. bekannte Produkte)
+    print("🔍 Produkt-IDs zuweisen...")
+    filtered_data = assign_product_ids(filtered_data)
 
     # 4. BSR-Daten anreichern
     print("📦 BSR-Daten abrufen...")
