@@ -77,6 +77,10 @@ NON_SUPPLEMENT_NODES = [
 def classify(title: str, bsr_categories: Optional[str] = None) -> int:
     """
     Klassifiziert ein Produkt in Kategorie 1-5.
+    
+    Bottom-Up-Logik: Jedes Produkt startet bei Kat 5 (Sonstige).
+    Dann wird schrittweise geprüft ob es in eine höhere Kategorie gehört:
+      5 → 4 → 3 → 2 → 1
 
     Args:
         title: Produkttitel
@@ -99,36 +103,37 @@ def classify(title: str, bsr_categories: Optional[str] = None) -> int:
     is_supplement_node = _node_match(nodes, SUPPLEMENT_NODES)
     is_juice_node = _node_match(nodes, NON_SUPPLEMENT_NODES) and not is_supplement_node
 
-    # Fruchtsäfte ohne Supplement-Node → direkt Kat 5
-    if is_excluded and not is_supplement_node:
-        return 5
-    if is_juice_node and not is_multi:
-        return 5
+    # ── Start: Kat 5 (Sonstige) ──
+    grade = 5
 
-    # ── Kat 1: Flüssiges Multivitaminkonzentrat ──
-    if is_multi and is_liquid:
-        return 1
-
-    # ── Kat 2: Multivitamin-Pulver zum Trinken ──
-    if is_multi and is_powder:
-        return 2
-
-    # ── Kat 3: Multivitamin-Kapsel/-Tablette ──
-    if is_multi and is_capsule:
-        return 3
-
-    # Multivitamin ohne erkannte Form → Kat 1 wenn Supplement-Node, sonst 3
-    if is_multi:
-        return 1 if is_supplement_node else 3
-
-    # ── Kat 4: Allgemeines NEM-Pulver/Drink (kein Multivitamin) ──
+    # ── Hochstufen auf Kat 4: NEM-Pulver/Drink? ──
     if is_nem and (is_powder or is_liquid) and not is_excluded:
-        return 4
-    if is_supplement_node and (is_powder or is_liquid) and not is_excluded:
-        return 4
+        grade = 4
+    elif is_supplement_node and (is_powder or is_liquid) and not is_excluded:
+        grade = 4
 
-    # ── Kat 5: Alles übrige ──
-    return 5
+    # ── Hochstufen auf Kat 3: Multivitamin-Kapsel? ──
+    if is_multi and is_capsule:
+        grade = 3
+    elif is_multi and not is_liquid and not is_powder and not is_capsule:
+        # Multivitamin ohne erkennbare Darreichungsform → Kat 3 als Default
+        grade = 3
+
+    # ── Hochstufen auf Kat 2: Multivitamin-Pulver? ──
+    if is_multi and is_powder:
+        grade = 2
+
+    # ── Hochstufen auf Kat 1: Flüssiges Multivitaminkonzentrat? ──
+    if is_multi and is_liquid:
+        grade = 1
+
+    # ── Herabstufen: Fruchtsäfte ohne Supplement-Node bleiben Kat 5 ──
+    if is_excluded and not is_supplement_node:
+        grade = 5
+    if is_juice_node and not is_multi:
+        grade = 5
+
+    return grade
 
 
 def classify_product(row) -> int:
