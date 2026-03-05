@@ -31,8 +31,7 @@ def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
     # Preis vorhanden
     mask_price = df["price"].notnull()
 
-<<<<<<< HEAD
-    return df[mask_format & mask_no_capsules & mask_reviews & mask_price]
+    return df[mask_reviews & mask_price]
 
 
 def apply_lavita_relevance_filter(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
@@ -118,6 +117,3 @@ def apply_lavita_relevance_filter(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
         print(f"  LaVita-Relevanzfilter: {excluded_count} von {total_before} Produkten ausgeschlossen")
 
     return filtered, total_before
-=======
-    return df[mask_reviews & mask_price]
->>>>>>> 2366af1431db930f68a052f556dbeb5161179b91
