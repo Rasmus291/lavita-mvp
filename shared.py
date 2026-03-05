@@ -9,11 +9,11 @@ import os
 DATA_FILE = "data/master_data.csv"
 
 GRADE_LABELS = {
-    1: "🥇 Direkt (Flüssig)",
-    2: "🥈 Komplex",
-    3: "🥉 Standard",
-    4: "4. Sonstige",
-    5: "5. Sonstige"
+    1: "🥇 Kat 1 – Flüssig-Konzentrat",
+    2: "🥈 Kat 2 – Pulver-Multi",
+    3: "🥉 Kat 3 – Kapsel-Multi",
+    4: "4️⃣ Kat 4 – NEM-Drink/Pulver",
+    5: "5️⃣ Kat 5 – Sonstige NEM",
 }
 
 STYLE_CSS = """
